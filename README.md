@@ -1,12 +1,12 @@
 # todoish
 
-A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database and surface in a minimal terminal-style window grouped by urgency — NOW, NEXT, LATER.
+A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database.
 
 ---
 
 ## install
 
-Download the latest `.dmg` from [Releases](https://github.com/lovelydyna/todoish/releases), open it, and drag Todoish to Applications.
+Download from [Releases](https://github.com/lovelydyna/todoish/releases)
 
 On first launch you'll be prompted for a Notion API key and database ID.
 
