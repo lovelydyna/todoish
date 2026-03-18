@@ -1,6 +1,9 @@
 # todoish
+<img width="458" height="614" alt="Screenshot 2026-03-18 at 03 38 21" src="https://github.com/user-attachments/assets/a29a82e9-f604-4f5e-8af4-625baacad97f" />
+<img width="456" height="615" alt="Screenshot 2026-03-18 at 03 39 11" src="https://github.com/user-attachments/assets/621c4e41-d7d8-4b5d-9e46-160e1b6bed73" />
 
-A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database.
+
+A lightweight Notion todoish. Tasks sync from your Notion database.
 
 ---
 
