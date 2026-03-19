@@ -10,16 +10,10 @@ pub struct Config {
     pub completion_tone: String,
     #[serde(default)]
     pub startup_position: String,
-    #[serde(default = "default_window_mode")]
-    pub window_mode: String,
 }
 
 fn default_tone() -> String {
     "bell".to_string()
-}
-
-fn default_window_mode() -> String {
-    "float".to_string()
 }
 
 fn config_path() -> PathBuf {

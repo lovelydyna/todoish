@@ -30,6 +30,7 @@ pub fn run() {
             commands::get_autostart,
             commands::set_autostart,
             commands::delete_task,
+            commands::update_task_cmd,
         ])
         .setup(|app| {
             let handle1 = app.handle().clone();
@@ -43,7 +44,7 @@ pub fn run() {
                 notifications::start_notification_loop(handle2).await;
             });
 
-            // Apply native macOS blur (NSVisualEffectView — never flickers)
+            // Apply native macOS blur
             if let Some(window) = app.get_webview_window("main") {
                 let _ = apply_vibrancy(
                     &window,
@@ -53,11 +54,22 @@ pub fn run() {
                 );
             }
 
-            // Apply window mode (float = always on top, tile = normal)
-            if let Some(config) = config::load_config() {
-                if let Some(window) = app.get_webview_window("main") {
-                    let float = config.window_mode != "tile";
-                    let _ = window.set_always_on_top(float);
+            // Visible on all workspaces — follows the user across every Space.
+            // Using direct ObjC call (same thread as setup = main thread, safe).
+            // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_always_on_top(false);
+
+                #[cfg(target_os = "macos")]
+                {
+                    use objc2::msg_send;
+                    use objc2::runtime::AnyObject;
+                    if let Ok(ptr) = window.ns_window() {
+                        unsafe {
+                            let ns_win = ptr as *mut AnyObject;
+                            let _: () = msg_send![&*ns_win, setCollectionBehavior: 1usize];
+                        }
+                    }
                 }
             }
 

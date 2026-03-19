@@ -4,7 +4,6 @@ use chrono::{DateTime, Utc};
 use std::sync::Mutex;
 use tauri::{Emitter, State};
 
-
 pub struct TaskCache(pub Mutex<Vec<Task>>);
 
 #[tauri::command]
@@ -18,14 +17,12 @@ pub async fn save_config_cmd(
     database_id: String,
     completion_tone: String,
     startup_position: String,
-    window_mode: String,
 ) -> Result<(), String> {
     save_config(&Config {
         notion_api_key: api_key,
         database_id,
         completion_tone,
         startup_position,
-        window_mode,
     })
 }
 
@@ -130,6 +127,35 @@ pub async fn create_task(
     .await?;
     cache.0.lock().unwrap().push(task.clone());
     Ok(task)
+}
+
+#[tauri::command]
+pub async fn update_task_cmd(
+    task_id: String,
+    title: String,
+    due: Option<String>,
+    priority: Option<String>,
+    energy: Option<String>,
+    cache: State<'_, TaskCache>,
+) -> Result<(), String> {
+    let config = load_config().ok_or("No config")?;
+    notion::update_task(
+        &config.notion_api_key,
+        &task_id,
+        &title,
+        due.as_deref(),
+        priority.as_deref(),
+        energy.as_deref(),
+    )
+    .await?;
+    let mut locked = cache.0.lock().unwrap();
+    if let Some(task) = locked.iter_mut().find(|t| t.id == task_id) {
+        task.title = title;
+        task.due = due;
+        task.priority = priority;
+        task.energy = energy;
+    }
+    Ok(())
 }
 
 #[tauri::command]

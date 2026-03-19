@@ -14,7 +14,6 @@ export interface Config {
   database_id: string;
   completion_tone: string;
   startup_position: string;
-  window_mode: string;
 }
 
 export type TaskGroup = "NOW" | "NEXT" | "LATER" | "SNOOZED" | "DONE";
