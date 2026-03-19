@@ -173,6 +173,46 @@ pub async fn create_task(
     })
 }
 
+pub async fn update_task(
+    api_key: &str,
+    task_id: &str,
+    title: &str,
+    due: Option<&str>,
+    priority: Option<&str>,
+    energy: Option<&str>,
+) -> Result<(), String> {
+    let mut props = serde_json::Map::new();
+    props.insert(
+        "Name".into(),
+        json!({ "title": [{ "text": { "content": title } }] }),
+    );
+    match due {
+        Some(d) if !d.is_empty() => {
+            props.insert("Due".into(), json!({ "date": { "start": d } }));
+        }
+        _ => {
+            props.insert("Due".into(), json!({ "date": null }));
+        }
+    }
+    match priority {
+        Some(p) if !p.is_empty() => {
+            props.insert("Priority".into(), json!({ "select": { "name": p } }));
+        }
+        _ => {
+            props.insert("Priority".into(), json!({ "select": null }));
+        }
+    }
+    match energy {
+        Some(e) if !e.is_empty() => {
+            props.insert("Energy".into(), json!({ "select": { "name": e } }));
+        }
+        _ => {
+            props.insert("Energy".into(), json!({ "select": null }));
+        }
+    }
+    patch_task(api_key, task_id, json!({ "properties": props })).await
+}
+
 pub async fn archive_task(api_key: &str, task_id: &str) -> Result<(), String> {
     patch_task(
         api_key,

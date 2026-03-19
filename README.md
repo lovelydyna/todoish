@@ -7,6 +7,11 @@ A lightweight Notion todoish. Tasks sync from your Notion database.
 
 Download from [Releases](https://github.com/lovelydyna/todoish/releases)
 
+> **macOS note:** The app is ad-hoc signed but not notarized. On first launch, right-click → Open to bypass Gatekeeper. Or run:
+> ```
+> xattr -cr /Applications/Todoish.app
+> ```
+
 On first launch you'll be prompted for a Notion API key and database ID.
 
 ---
@@ -43,6 +48,7 @@ notion.so → Settings → Connections → Develop or manage integrations → Ne
 | `n` | add task |
 | `s` | snooze |
 | `f` | focus mode |
+| `e` | edit task (in focus mode) |
 | `d` | delete task |
 | `u` | undo delete |
 | `r` | refresh |

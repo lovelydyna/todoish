@@ -58,7 +58,6 @@ export default function App() {
           initialDatabaseId={currentConfig?.database_id ?? ""}
           initialTone={currentConfig?.completion_tone ?? "bell"}
           initialPosition={currentConfig?.startup_position ?? ""}
-          initialWindowMode={currentConfig?.window_mode ?? "float"}
         />
       );
     }

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { playComplete } from "../lib/sounds";
 
@@ -11,7 +10,6 @@ interface SetupProps {
   initialDatabaseId?: string;
   initialTone?: string;
   initialPosition?: string;
-  initialWindowMode?: string;
 }
 
 const TONES = ["bell", "chime", "click", "none"] as const;
@@ -31,13 +29,11 @@ export function Setup({
   initialDatabaseId = "",
   initialTone = "bell",
   initialPosition = "",
-  initialWindowMode = "float",
 }: SetupProps) {
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [databaseId, setDatabaseId] = useState(initialDatabaseId);
   const [tone, setTone] = useState(initialTone);
   const [position, setPosition] = useState(initialPosition);
-  const [windowMode, setWindowMode] = useState(initialWindowMode);
   const [autostart, setAutostart] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,11 +65,7 @@ export function Setup({
         databaseId: databaseId.trim(),
         completionTone: tone,
         startupPosition: position,
-        windowMode,
       });
-      const win = getCurrentWindow();
-      await win.setAlwaysOnTop(windowMode === "float");
-      if (windowMode !== "float") await win.setAlwaysOnTop(false);
       if (isSettings) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -143,25 +135,6 @@ export function Setup({
         {isSettings && (
           <>
             <div className="settings-divider">preferences</div>
-
-            <div className="field">
-              <label className="field-label">window mode</label>
-              <div className="tone-options">
-                {(["float", "tile"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    className={`tone-btn${windowMode === m ? " tone-btn--active" : ""}`}
-                    onClick={() => setWindowMode(m)}
-                  >
-                    {m === "float" ? "float — always on top" : "tile — normal window"}
-                  </button>
-                ))}
-              </div>
-              <div className="field-hint">
-                float keeps the window above all others · tile lets it behave like a normal window
-              </div>
-            </div>
 
             <div className="field">
               <label className="field-label">completion tone</label>
