@@ -1,16 +1,20 @@
 # todoish
-A lightweight Notion todoish. Tasks sync from your Notion database.
+
+A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database and surface in a minimal terminal-style window grouped by urgency — NOW, NEXT, LATER.
 
 ---
 
 ## install
 
-Download from [Releases](https://github.com/lovelydyna/todoish/releases)
+1. Download **Todoish-macOS-arm64.zip** from [Releases](https://github.com/lovelydyna/todoish/releases)
+2. Unzip and drag **Todoish.app** to your Applications folder
+3. Open Terminal and run:
+   ```bash
+   xattr -cr /Applications/Todoish.app
+   ```
+4. Launch Todoish normally
 
-> **macOS note:** The app is ad-hoc signed but not notarized. On first launch, right-click → Open to bypass Gatekeeper. Or run:
-> ```
-> xattr -cr /Applications/Todoish.app
-> ```
+> The `xattr` command removes the macOS quarantine flag. This is a one-time step required for apps not distributed through the Mac App Store.
 
 On first launch you'll be prompted for a Notion API key and database ID.
 
