@@ -1,4 +1,10 @@
 # todoish
+<img width="534" height="649" alt="Screenshot 2026-04-09 at 13 51 45" src="https://github.com/user-attachments/assets/b5a2b7ad-e840-4860-9e14-0c6f6669ff04" />
+<img width="504" height="608" alt="Screenshot 2026-04-09 at 13 52 37" src="https://github.com/user-attachments/assets/7e29ef90-44d2-4379-b065-a16c4c6663ac" />
+<img width="472" height="583" alt="Screenshot 2026-04-09 at 13 52 21" src="https://github.com/user-attachments/assets/90058ff2-179d-46cd-a487-5df419c5ef0e" />
+
+
+
 
 A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database and surface in a minimal terminal-style window grouped by urgency — NOW, NEXT, LATER.
 
