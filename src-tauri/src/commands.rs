@@ -1,8 +1,7 @@
 use crate::config::{load_config, save_config, Config};
 use crate::notion::{self, Task};
-use chrono::{DateTime, Utc};
 use std::sync::Mutex;
-use tauri::{Emitter, State};
+use tauri::State;
 
 pub struct TaskCache(pub Mutex<Vec<Task>>);
 
@@ -17,13 +16,29 @@ pub async fn save_config_cmd(
     database_id: String,
     completion_tone: String,
     startup_position: String,
+    always_on_top: bool,
 ) -> Result<(), String> {
     save_config(&Config {
         notion_api_key: api_key,
         database_id,
         completion_tone,
         startup_position,
+        always_on_top,
     })
+}
+
+#[tauri::command]
+pub async fn set_always_on_top(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        window.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -97,7 +112,7 @@ pub async fn cycle_status(
     let config = load_config().ok_or("No config")?;
     notion::set_task_status(&config.notion_api_key, &task_id, next).await?;
 
-    let now = Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().to_rfc3339();
     let mut locked = cache.0.lock().unwrap();
     if let Some(task) = locked.iter_mut().find(|t| t.id == task_id) {
         task.status = next.to_string();
@@ -136,6 +151,7 @@ pub async fn update_task_cmd(
     due: Option<String>,
     priority: Option<String>,
     energy: Option<String>,
+    notes: Option<String>,
     cache: State<'_, TaskCache>,
 ) -> Result<(), String> {
     let config = load_config().ok_or("No config")?;
@@ -146,6 +162,7 @@ pub async fn update_task_cmd(
         due.as_deref(),
         priority.as_deref(),
         energy.as_deref(),
+        notes.as_deref(),
     )
     .await?;
     let mut locked = cache.0.lock().unwrap();
@@ -154,6 +171,7 @@ pub async fn update_task_cmd(
         task.due = due;
         task.priority = priority;
         task.energy = energy;
+        task.notes = notes;
     }
     Ok(())
 }
@@ -170,53 +188,14 @@ pub async fn delete_task(
 }
 
 #[tauri::command]
-pub async fn snooze_task(
-    task_id: String,
-    snooze_until: String,
-    cache: State<'_, TaskCache>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    let config = load_config().ok_or("No config")?;
-
-    let title = {
-        let locked = cache.0.lock().unwrap();
-        locked
-            .iter()
-            .find(|t| t.id == task_id)
-            .map(|t| t.title.clone())
-            .unwrap_or_default()
-    };
-
-    notion::snooze_task(&config.notion_api_key, &task_id, &snooze_until).await?;
-    let mut locked = cache.0.lock().unwrap();
-    if let Some(task) = locked.iter_mut().find(|t| t.id == task_id) {
-        task.status = "Snoozed".to_string();
-        task.snooze_until = Some(snooze_until.clone());
-    }
-
-    // Emit in-app reminder when snooze expires
-    if let Ok(until) = DateTime::parse_from_rfc3339(&snooze_until) {
-        let until_utc = until.with_timezone(&Utc);
-        let now = Utc::now();
-        if until_utc > now {
-            if let Ok(duration) = (until_utc - now).to_std() {
-                let task_id_clone = task_id.clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(duration).await;
-                    let _ = app.emit("task-reminder", Task {
-                        id: task_id_clone,
-                        title,
-                        status: "Todo".to_string(),
-                        due: None,
-                        priority: None,
-                        energy: None,
-                        snooze_until: None,
-                        last_edited_time: None,
-                    });
-                });
-            }
-        }
-    }
-
+pub async fn open_in_notion(task_id: String) -> Result<(), String> {
+    // Notion page URLs use the ID without dashes
+    let clean_id = task_id.replace('-', "");
+    let url = format!("https://notion.so/{}", clean_id);
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
+

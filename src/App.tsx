@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Setup } from "./views/Setup";
 import { Main } from "./views/Main";
 import { Focus } from "./views/Focus";
-import { Reminder } from "./components/Reminder";
 import { Task, Config } from "./types";
 
 type View = "loading" | "setup" | "main" | "focus" | "settings";
@@ -14,7 +12,6 @@ export default function App() {
   const [view, setView] = useState<View>("loading");
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [currentConfig, setCurrentConfig] = useState<Config | null>(null);
-  const [reminderTask, setReminderTask] = useState<Task | null>(null);
 
   useEffect(() => {
     invoke<Config | null>("get_config")
@@ -24,11 +21,16 @@ export default function App() {
       })
       .catch(() => setView("setup"));
 
-    const unlisten = listen<Task>("task-reminder", (event) => {
-      setReminderTask(event.payload);
-    });
+    const win = getCurrentWindow();
 
-    return () => { unlisten.then((f) => f()); };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey) return;
+      if (e.key === "w" || e.key === "h") { e.preventDefault(); win.hide(); }
+      if (e.key === "q") { e.preventDefault(); invoke("quit_app"); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => { window.removeEventListener("keydown", onKeyDown); };
   }, []);
 
   const openSettings = () => {
@@ -58,6 +60,7 @@ export default function App() {
           initialDatabaseId={currentConfig?.database_id ?? ""}
           initialTone={currentConfig?.completion_tone ?? "bell"}
           initialPosition={currentConfig?.startup_position ?? ""}
+          initialAlwaysOnTop={currentConfig?.always_on_top ?? false}
         />
       );
     }
@@ -67,6 +70,7 @@ export default function App() {
           task={focusTask}
           onDone={() => setView("main")}
           onExit={() => setView("main")}
+          onUpdate={(fields) => setFocusTask((t) => t ? { ...t, ...fields } : t)}
         />
       );
     }
@@ -83,7 +87,7 @@ export default function App() {
 
   const handleDrag = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (!target.closest("button, input, a, select, textarea, .task-row, .task-check, .snooze-option, .snooze-cancel, .quickadd-terminal, .reminder")) {
+    if (!target.closest("button, input, a, select, textarea, .task-row, .task-check, .snooze-option, .snooze-cancel, .quickadd-terminal")) {
       e.preventDefault();
       getCurrentWindow().startDragging();
     }
@@ -93,12 +97,6 @@ export default function App() {
     <div style={{ height: "100%" }} onMouseDown={handleDrag}>
       <div className="blur-layer" />
       {renderView()}
-      {reminderTask && (
-        <Reminder
-          task={reminderTask}
-          onDismiss={() => setReminderTask(null)}
-        />
-      )}
     </div>
   );
 }

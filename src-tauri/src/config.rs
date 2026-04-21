@@ -13,6 +13,8 @@ pub struct Config {
     pub completion_tone: String,
     #[serde(default)]
     pub startup_position: String,
+    #[serde(default)]
+    pub always_on_top: bool,
 }
 
 fn default_tone() -> String {

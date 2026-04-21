@@ -86,23 +86,6 @@ export function useTasks() {
     }
   }, [loadTasks]);
 
-  const snoozeTask = useCallback(
-    async (taskId: string, snoozeUntil: string) => {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId ? { ...t, status: "Snoozed", snooze_until: snoozeUntil } : t
-        )
-      );
-      try {
-        await invoke("snooze_task", { taskId, snoozeUntil });
-      } catch (e) {
-        setError(String(e));
-        await loadTasks();
-      }
-    },
-    [loadTasks]
-  );
-
   const addTask = useCallback(async (
     title: string,
     due: string | null,
@@ -131,6 +114,6 @@ export function useTasks() {
     await loadTasks();
   }, [loadTasks]);
 
-  return { tasks, loading, error, cycleStatus, snoozeTask, addTask, deleteTask, refresh };
+  return { tasks, loading, error, cycleStatus, addTask, deleteTask, refresh };
 
 }

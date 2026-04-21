@@ -1,18 +1,18 @@
 mod commands;
 mod config;
 mod notion;
-mod notifications;
 mod sync;
 
 use commands::TaskCache;
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -25,31 +25,28 @@ pub fn run() {
             commands::trigger_sync,
             commands::complete_task,
             commands::cycle_status,
-            commands::snooze_task,
             commands::create_task,
             commands::get_autostart,
             commands::set_autostart,
             commands::delete_task,
+            commands::open_in_notion,
             commands::update_task_cmd,
+            commands::set_always_on_top,
+            commands::quit_app,
         ])
         .setup(|app| {
             let handle1 = app.handle().clone();
-            let handle2 = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
                 sync::start_sync_loop(handle1).await;
             });
 
-            tauri::async_runtime::spawn(async move {
-                notifications::start_notification_loop(handle2).await;
-            });
-
-            // Apply native macOS blur
+            // Apply native macOS blur — follows window focus so it dims when inactive
             if let Some(window) = app.get_webview_window("main") {
                 let _ = apply_vibrancy(
                     &window,
                     NSVisualEffectMaterial::HudWindow,
-                    Some(NSVisualEffectState::Active),
+                    Some(NSVisualEffectState::FollowsWindowActiveState),
                     Some(10.0),
                 );
             }
@@ -58,7 +55,10 @@ pub fn run() {
             // Using direct ObjC call (same thread as setup = main thread, safe).
             // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_always_on_top(false);
+                let always_on_top = config::load_config()
+                    .map(|c| c.always_on_top)
+                    .unwrap_or(false);
+                let _ = window.set_always_on_top(always_on_top);
 
                 #[cfg(target_os = "macos")]
                 {
@@ -109,6 +109,35 @@ pub fn run() {
                     }
                 }
             }
+
+            // System tray
+            let show_item = MenuItem::with_id(app, "show", "Show Todoish", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Todoish", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&tray_menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
             Ok(())
         })

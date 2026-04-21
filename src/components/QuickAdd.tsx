@@ -116,8 +116,6 @@ export function QuickAdd({ onSubmit, onClose }: QuickAddProps) {
 
   return (
     <div className="quickadd" onClick={(e) => e.stopPropagation()}>
-      <div className="quickadd-header">new task</div>
-
       {completed.map(({ step, raw }) => (
         <div key={step} className="quickadd-row quickadd-row--done">
           <span className="quickadd-key">{PROMPTS[step]}</span>
@@ -134,7 +132,7 @@ export function QuickAdd({ onSubmit, onClose }: QuickAddProps) {
           onChange={(e) => setCurrent(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") { e.preventDefault(); handleEnter(); }
-            if (e.key === "Escape") onClose();
+            if (e.key === "Escape") { onClose(); }
             if (e.key === "ArrowUp" || (e.key === "Backspace" && current === "")) {
               e.preventDefault();
               handleBack();
@@ -146,9 +144,8 @@ export function QuickAdd({ onSubmit, onClose }: QuickAddProps) {
       </div>
 
       <div className="quickadd-hint">
-        {HINTS[currentStep] && <span>{HINTS[currentStep]} · </span>}
-        {stepIndex > 0 && <span>↑/⌫ back · </span>}
-        esc cancel
+        {HINTS[currentStep] && <span>{HINTS[currentStep]}</span>}
+        {stepIndex > 0 && <span> · ↑/⌫ back</span>}
       </div>
     </div>
   );

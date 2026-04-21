@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Task } from "../types";
 import { timeHint } from "../lib/timeHint";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { playComplete } from "../lib/sounds";
-import { FocusEdit } from "../components/FocusEdit";
+import { WindowControls } from "../components/WindowControls";
 
 interface FocusProps {
   task: Task;
@@ -13,93 +13,298 @@ interface FocusProps {
   onUpdate?: (updated: Partial<Task>) => void;
 }
 
-export function Focus({ task: initialTask, onDone, onExit, onUpdate }: FocusProps) {
-  const [task, setTask] = useState(initialTask);
-  const [editing, setEditing] = useState(false);
-  const hint = timeHint(task.due, task.energy);
+function parseDue(val: string): string | null {
+  const v = val.trim().toLowerCase();
+  if (!v) return null;
+  if (v === "today" || v === "t") return new Date().toISOString().split("T")[0];
+  if (v === "tomorrow" || v === "tmrw" || v === "tm") {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  }
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) return val.trim();
+  return null;
+}
 
-  const handleKey = useCallback(
-    (key: string, _e: KeyboardEvent) => {
-      if (editing) return;
-      switch (key) {
-        case " ":
-          playComplete();
-          invoke("complete_task", { taskId: task.id }).then(onDone);
-          break;
-        case "s":
-          invoke("snooze_task", {
-            taskId: task.id,
-            snoozeUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-          }).then(onDone);
-          break;
-        case "e":
-          setEditing(true);
-          break;
-        case "Escape":
+const PRIORITIES = [null, "High", "Medium", "Low"];
+const ENERGIES   = [null, "High", "Low", "Quick"];
+
+export function Focus({ task: initialTask, onDone, onExit, onUpdate }: FocusProps) {
+  const [task, setTask]           = useState(initialTask);
+  const [notes, setNotes]         = useState(initialTask.notes ?? "");
+  const [saving, setSaving]       = useState(false);
+  const [notesSaved, setNotesSaved] = useState(true);
+  const [editTitle, setEditTitle] = useState(false);
+  const [editDue, setEditDue]     = useState(false);
+  const [showHelp, setShowHelp]   = useState(false);
+  const [titleVal, setTitleVal]   = useState(task.title);
+  const [dueVal, setDueVal]       = useState(task.due ?? "");
+
+  const titleRef   = useRef<HTMLInputElement>(null);
+  const dueRef     = useRef<HTMLInputElement>(null);
+  const notesRef   = useRef<HTMLTextAreaElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { if (editTitle) titleRef.current?.focus(); }, [editTitle]);
+  useEffect(() => { if (editDue)   dueRef.current?.select(); }, [editDue]);
+
+  const saveTask = useCallback(async (patch: Partial<Task>) => {
+    const merged = { ...task, ...patch };
+    setSaving(true);
+    await invoke("update_task_cmd", {
+      taskId: merged.id,
+      title:    merged.title,
+      due:      merged.due      ?? undefined,
+      priority: merged.priority ?? undefined,
+      energy:   merged.energy   ?? undefined,
+      notes:    merged.notes    ?? undefined,
+    });
+    setTask(merged);
+    onUpdate?.(patch);
+    setSaving(false);
+  }, [task, onUpdate]);
+
+  // ── Title save ──────────────────────────────────────────────
+  const commitTitle = () => {
+    const v = titleVal.trim();
+    if (v && v !== task.title) saveTask({ title: v });
+    else setTitleVal(task.title);
+    setEditTitle(false);
+  };
+
+  // ── Due save ────────────────────────────────────────────────
+  const commitDue = () => {
+    const parsed = parseDue(dueVal);
+    if (parsed !== task.due) saveTask({ due: parsed });
+    setDueVal(parsed ?? "");
+    setEditDue(false);
+  };
+
+  // ── Priority cycle ──────────────────────────────────────────
+  const cyclePriority = () => {
+    const idx  = PRIORITIES.indexOf(task.priority);
+    const next = PRIORITIES[(idx + 1) % PRIORITIES.length];
+    saveTask({ priority: next });
+  };
+
+  // ── Energy cycle ────────────────────────────────────────────
+  const cycleEnergy = () => {
+    const idx  = ENERGIES.indexOf(task.energy);
+    const next = ENERGIES[(idx + 1) % ENERGIES.length];
+    saveTask({ energy: next });
+  };
+
+  // ── Notes debounced save ────────────────────────────────────
+  const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNotes(val);
+    setNotesSaved(false);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTask({ notes: val || null });
+      setNotesSaved(true);
+    }, 1200);
+  };
+
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+
+  // ── Keyboard shortcuts ──────────────────────────────────────
+  const isEditingAny = editTitle || editDue;
+  const handleKey = useCallback((key: string, e: KeyboardEvent) => {
+    switch (key) {
+      case " ":
+        if (document.activeElement === notesRef.current) return;
+        if (isEditingAny) return;
+        e.preventDefault();
+        playComplete();
+        invoke("complete_task", { taskId: task.id }).then(onDone);
+        break;
+      case "Escape":
+        if (document.activeElement === notesRef.current) {
+          notesRef.current?.blur();
+        } else if (showHelp) {
+          setShowHelp(false);
+        } else {
           onExit();
-          break;
-      }
-    },
-    [task.id, onDone, onExit, editing]
-  );
+        }
+        break;
+      case "?":
+      case "h":
+        if (document.activeElement === notesRef.current) return;
+        if (isEditingAny) return;
+        setShowHelp(!showHelp);
+        break;
+    }
+  }, [task.id, onDone, onExit, isEditingAny, showHelp]);
 
   useKeyboard(handleKey);
 
-  const handleSave = async (fields: {
-    title: string;
-    due: string | null;
-    priority: string | null;
-    energy: string | null;
-  }) => {
-    await invoke("update_task_cmd", {
-      taskId: task.id,
-      title: fields.title,
-      due: fields.due ?? undefined,
-      priority: fields.priority ?? undefined,
-      energy: fields.energy ?? undefined,
-    });
-    const updated = { ...task, ...fields };
-    setTask(updated);
-    onUpdate?.(fields);
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <div className="focus">
-        <div className="focus-label">▶ focus · edit</div>
-        <FocusEdit task={task} onSave={handleSave} onCancel={() => setEditing(false)} />
-      </div>
-    );
-  }
+  const hint = timeHint(task.due, task.energy);
 
   return (
     <div className="focus">
-      <div className="focus-label">▶ focus</div>
+      <div className="topbar" data-tauri-drag-region>
+        <div className="topbar-left"><WindowControls /></div>
+        <div className="topbar-center" data-tauri-drag-region>
+          <span className="brand" data-tauri-drag-region>focus</span>
+        </div>
+        <div className="topbar-right focus-topbar-keys">
+          <button className="topbar-icon-btn" title="done [space]"
+            onClick={() => { playComplete(); invoke("complete_task", { taskId: task.id }).then(onDone); }}>✓</button>
+          <button className="topbar-icon-btn" title="back [esc]" onClick={onExit}>✕</button>
+        </div>
+      </div>
+      {!notesSaved && <div className="focus-saving-bar"></div>}
 
-      <div className="focus-task">
-        <div className="focus-checkbox">[ ]</div>
-        <div className="focus-title">{task.title}</div>
-        {hint && <div className="focus-hint">· {hint}</div>}
-        <div className="focus-meta-row">
-          {task.priority && (
-            <span className="focus-meta">{task.priority.toLowerCase()}</span>
-          )}
-          {task.energy && (
-            <span className="focus-meta">{task.energy.toLowerCase()} energy</span>
-          )}
+      <div className="focus-body" onContextMenu={(e) => { e.preventDefault(); invoke("open_in_notion", { taskId: task.id }); }}>
+        {/* Title */}
+        {editTitle ? (
+          <input
+            ref={titleRef}
+            className="focus-title-input"
+            value={titleVal}
+            onChange={(e) => setTitleVal(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter")  { e.preventDefault(); commitTitle(); }
+              if (e.key === "Escape") { setTitleVal(task.title); setEditTitle(false); }
+            }}
+            spellCheck={false}
+          />
+        ) : (
+          <div
+            className="focus-title focus-title--editable"
+            onClick={() => { setTitleVal(task.title); setEditTitle(true); }}
+            title="click to edit"
+          >
+            {task.title}
+          </div>
+        )}
+
+        {hint && <div className="focus-hint">{hint}</div>}
+
+        {/* Properties */}
+        <div className="focus-props">
+
+          {/* Due */}
+          <div className="focus-prop-row">
+            <span className="focus-prop-label">Due</span>
+            {editDue ? (
+              <input
+                ref={dueRef}
+                className="focus-prop-input"
+                value={dueVal}
+                onChange={(e) => setDueVal(e.target.value)}
+                onBlur={commitDue}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter")  { e.preventDefault(); commitDue(); }
+                  if (e.key === "Escape") { setDueVal(task.due ?? ""); setEditDue(false); }
+                }}
+                placeholder="today · tmrw · YYYY-MM-DD"
+                spellCheck={false}
+              />
+            ) : (
+              <span
+                className={`focus-prop-value focus-prop-value--editable${!task.due ? " focus-prop-value--empty" : ""}`}
+                onClick={() => { setDueVal(task.due ?? ""); setEditDue(true); }}
+                title="click to edit"
+              >
+                {task.due ?? "—"}
+              </span>
+            )}
+          </div>
+
+          {/* Priority */}
+          <div className="focus-prop-row">
+            <span className="focus-prop-label">Priority</span>
+            <span
+              className={`focus-prop-value focus-prop-value--editable${!task.priority ? " focus-prop-value--empty" : ""}`}
+              onClick={cyclePriority}
+              title="click to cycle"
+            >
+              {task.priority ?? "—"}
+            </span>
+          </div>
+
+          {/* Energy */}
+          <div className="focus-prop-row">
+            <span className="focus-prop-label">Energy</span>
+            <span
+              className={`focus-prop-value focus-prop-value--editable${!task.energy ? " focus-prop-value--empty" : ""}`}
+              onClick={cycleEnergy}
+              title="click to cycle"
+            >
+              {task.energy ?? "—"}
+            </span>
+          </div>
+
+          {/* Notes */}
+          <div className="focus-prop-row focus-prop-row--notes">
+            <span className="focus-prop-label">Notes</span>
+            <textarea
+              ref={notesRef}
+              className="focus-notes"
+              value={notes}
+              onChange={handleNotesChange}
+              placeholder="add a note…"
+              rows={3}
+              spellCheck={false}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="focus-keys">
-        <span className="focus-key">[space]</span> done
-        <span className="focus-sep">·</span>
-        <span className="focus-key">[s]</span> snooze 1h
-        <span className="focus-sep">·</span>
-        <span className="focus-key">[e]</span> edit
-        <span className="focus-sep">·</span>
-        <span className="focus-key">[esc]</span> back
-      </div>
+      {showHelp && (
+        <div className="overlay" onClick={() => setShowHelp(false)}>
+          <div className="help-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="help-menu-header">
+              <span className="help-title">keybindings (focus mode)</span>
+            </div>
+
+            <div>
+              <div className="help-section">Task Actions</div>
+              <div className="help-row">
+                <span className="help-key">Space</span>
+                Mark task as complete
+              </div>
+            </div>
+
+            <div>
+              <div className="help-section">Navigation</div>
+              <div className="help-row">
+                <span className="help-key">Esc</span>
+                Exit focus mode or close input
+              </div>
+              <div className="help-row">
+                <span className="help-key">? / h</span>
+                Toggle this help
+              </div>
+            </div>
+
+            <div>
+              <div className="help-section">Editing</div>
+              <div className="help-row">
+                <span className="help-key">Click</span>
+                Edit title / due / priority / energy
+              </div>
+            </div>
+
+            <div>
+              <div className="help-section">Other</div>
+              <div className="help-row">
+                <span className="help-key">⌘W / ⌘H</span>
+                Hide
+              </div>
+              <div className="help-row">
+                <span className="help-key">⌘Q</span>
+                Quit
+              </div>
+            </div>
+
+            <div className="help-dismiss">press esc or click outside to close</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

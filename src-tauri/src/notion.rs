@@ -1,6 +1,30 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::Duration;
+
+/// Retry an async Notion API call up to 3 times with exponential backoff (1s, 2s, 4s).
+/// Only retries on network errors or 5xx responses.
+async fn with_retry<F, Fut, T>(mut f: F) -> Result<T, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let delays = [1u64, 2, 4];
+    let mut last_err = String::new();
+    for (attempt, &delay) in delays.iter().enumerate() {
+        match f().await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                last_err = e;
+                if attempt < delays.len() - 1 {
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                }
+            }
+        }
+    }
+    Err(last_err)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -10,6 +34,7 @@ pub struct Task {
     pub due: Option<String>,
     pub priority: Option<String>,
     pub energy: Option<String>,
+    pub notes: Option<String>,
     pub snooze_until: Option<String>,
     pub last_edited_time: Option<String>,
 }
@@ -41,6 +66,22 @@ fn extract_select(props: &Value, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+fn extract_status(props: &Value, key: &str) -> Option<String> {
+    props[key]["status"]["name"]
+        .as_str()
+        .map(|s| s.to_string())
+}
+
+fn extract_rich_text(props: &Value, key: &str) -> Option<String> {
+    let text = props[key]["rich_text"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|v| v["plain_text"].as_str())
+        .unwrap_or("")
+        .to_string();
+    if text.is_empty() { None } else { Some(text) }
+}
+
 fn extract_date(props: &Value, key: &str) -> Option<String> {
     props[key]["date"]["start"]
         .as_str()
@@ -48,6 +89,10 @@ fn extract_date(props: &Value, key: &str) -> Option<String> {
 }
 
 pub async fn fetch_tasks(api_key: &str, database_id: &str) -> Result<Vec<Task>, String> {
+    with_retry(|| fetch_tasks_once(api_key, database_id)).await
+}
+
+async fn fetch_tasks_once(api_key: &str, database_id: &str) -> Result<Vec<Task>, String> {
     let client = Client::new();
     let url = format!(
         "https://api.notion.com/v1/databases/{}/query",
@@ -57,10 +102,10 @@ pub async fn fetch_tasks(api_key: &str, database_id: &str) -> Result<Vec<Task>, 
     let body = json!({
         "filter": {
             "or": [
-                {"property": "Status", "select": {"equals": "Todo"}},
-                {"property": "Status", "select": {"equals": "In Progress"}},
-                {"property": "Status", "select": {"equals": "Snoozed"}},
-                {"property": "Status", "select": {"equals": "Done"}}
+                {"property": "Status", "status": {"equals": "Todo"}},
+                {"property": "Status", "status": {"equals": "In Progress"}},
+                {"property": "Status", "status": {"equals": "Snoozed"}},
+                {"property": "Status", "status": {"equals": "Done"}}
             ]
         },
         "sorts": [
@@ -96,7 +141,7 @@ pub async fn fetch_tasks(api_key: &str, database_id: &str) -> Result<Vec<Task>, 
             }
 
             let status =
-                extract_select(props, "Status").unwrap_or_else(|| "Todo".to_string());
+                extract_status(props, "Status").unwrap_or_else(|| "Todo".to_string());
             let snooze_until = extract_date(props, "Snooze Until");
 
 
@@ -107,6 +152,7 @@ pub async fn fetch_tasks(api_key: &str, database_id: &str) -> Result<Vec<Task>, 
                 due: extract_date(props, "Due"),
                 priority: extract_select(props, "Priority"),
                 energy: extract_select(props, "Energy"),
+                notes: extract_rich_text(props, "Notes"),
                 snooze_until,
                 last_edited_time: page.last_edited_time,
             })
@@ -128,7 +174,7 @@ pub async fn create_task(
 
     let mut props = serde_json::Map::new();
     props.insert("Name".into(), json!({ "title": [{ "text": { "content": title } }] }));
-    props.insert("Status".into(), json!({ "select": { "name": "Todo" } }));
+    props.insert("Status".into(), json!({ "status": { "name": "Todo" } }));
     if let Some(d) = due {
         props.insert("Due".into(), json!({ "date": { "start": d } }));
     }
@@ -168,6 +214,7 @@ pub async fn create_task(
         due: due.map(|s| s.to_string()),
         priority: priority.map(|s| s.to_string()),
         energy: energy.map(|s| s.to_string()),
+        notes: None,
         snooze_until: None,
         last_edited_time: page.last_edited_time,
     })
@@ -180,6 +227,7 @@ pub async fn update_task(
     due: Option<&str>,
     priority: Option<&str>,
     energy: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<(), String> {
     let mut props = serde_json::Map::new();
     props.insert(
@@ -210,6 +258,14 @@ pub async fn update_task(
             props.insert("Energy".into(), json!({ "select": null }));
         }
     }
+    match notes {
+        Some(n) if !n.is_empty() => {
+            props.insert("Notes".into(), json!({ "rich_text": [{ "text": { "content": n } }] }));
+        }
+        _ => {
+            props.insert("Notes".into(), json!({ "rich_text": [] }));
+        }
+    }
     patch_task(api_key, task_id, json!({ "properties": props })).await
 }
 
@@ -228,7 +284,7 @@ pub async fn set_task_status(api_key: &str, task_id: &str, status: &str) -> Resu
         task_id,
         json!({
             "properties": {
-                "Status": { "select": { "name": status } }
+                "Status": { "status": { "name": status } }
             }
         }),
     )
@@ -245,7 +301,7 @@ pub async fn snooze_task(
         task_id,
         json!({
             "properties": {
-                "Status": { "select": { "name": "Snoozed" } },
+                "Status": { "status": { "name": "Snoozed" } },
                 "Snooze Until": { "date": { "start": snooze_until } }
             }
         }),

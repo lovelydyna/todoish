@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { Task } from "../types";
 import { timeHint } from "../lib/timeHint";
 
@@ -21,10 +22,16 @@ export function TaskRow({ task, selected, onClick, onCycle }: TaskRowProps) {
   const isOverdue = hint.includes("overdue");
   const isDone = task.status === "Done";
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    invoke("open_in_notion", { taskId: task.id });
+  };
+
   return (
     <div
       className={`task-row ${selected ? "task-row--selected" : ""} ${isDone ? "task-row--done" : ""}`}
       onClick={onClick}
+      onContextMenu={handleContextMenu}
     >
       <span className="task-cursor">{selected ? "▶" : " "}</span>
       <span
