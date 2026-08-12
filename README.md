@@ -6,23 +6,38 @@
 
 
 
-A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database and surface in a minimal terminal-style window grouped by urgency — NOW, NEXT, LATER.
+A lightweight Notion todo app that lives on your desktop. Tasks sync from your Notion database and surface in a minimal terminal-style window grouped by urgency — NOW, THIS WEEK, NEXT WEEK, LATER — with a calendar view for what's scheduled.
+
+---
+
+## demo
+
+<!--
+  Record a walkthrough with QuickTime Player (File → New Screen Recording) or
+  ⌘⇧5, upload it to this repo's GitHub issue/PR/release comments to get a
+  CDN URL, then embed it here, e.g.:
+
+    https://github.com/user-attachments/assets/<your-video-id>
+
+  GitHub renders that URL as an inline player automatically — no extra markup
+  needed, same as the screenshots above.
+-->
 
 ---
 
 ## install
 
-1. Download **Todoish-macOS-arm64.zip** from [Releases](https://github.com/lovelydyna/todoish/releases)
-2. Unzip and drag **Todoish.app** to your Applications folder
+1. Download **Todoish.dmg** from [Releases](https://github.com/lovelydyna/todoish/releases)
+2. Open the DMG and drag **Todoish.app** to your Applications folder
 3. Open Terminal and run:
    ```bash
    xattr -cr /Applications/Todoish.app
    ```
 4. Launch Todoish normally
 
-> The `xattr` command removes the macOS quarantine flag. This is a one-time step required for apps not distributed through the Mac App Store.
+> The `xattr` command removes the macOS quarantine flag. This is a one-time step required for apps not distributed through the Mac App Store or signed with a paid Apple Developer certificate.
 
-On first launch you'll be prompted for a Notion API key and database ID.
+On first launch you'll be prompted for a Notion connection token and database id — see [notion setup](#notion-setup) below.
 
 ---
 
@@ -58,7 +73,10 @@ data source for you when you paste a database id.
 The same rows are read two ways. Press `c` to switch.
 
 **Task list** groups by *when you must act* — deadline first, falling back to
-the scheduled time — into NOW, NEXT, LATER and DONE.
+the scheduled time — into NOW, THIS WEEK, NEXT WEEK, LATER and DONE, split on
+the real Sunday-start week boundary rather than a fixed day count. Rows show a
+date (`today`, `Thu`, `Aug 20`), not a clock time — the calendar is where the
+time of day matters.
 
 **Calendar** groups by *when it happens* — scheduled time first, falling back to
 the deadline:
@@ -70,7 +88,8 @@ the deadline:
 - `esc` peels back one layer at a time: day filter → month view → task list
 
 Rows show `status · time · name · deadline`. `space` cycles status, `x` expands
-the description, `n` adds, `e` edits, `d` deletes, right-click opens it in Notion.
+the description inline (same behaviour in both views), `n` or the `+` button
+adds, `e` edits, `d` deletes, right-click opens it in Notion.
 
 Time input accepts `today 3pm`, `tmrw 9:00-10:30`, `2026-08-15 14:00`, or a bare
 `2026-08-15` for an all-day item.
@@ -96,11 +115,12 @@ opacity slider controls how much desktop shows through the blur.
 | `k / ↑` | move up |
 | `space` | cycle status |
 | `n` | add item |
+| `T` | jump to today |
 | `c` | calendar (toggle) |
 | `m` | month view (in calendar) |
 | `x` | expand description |
-| `h` | activity history |
-| `←` `→` | previous / next month |
+| `h` | history |
+| `←` `→` | previous / next week or month |
 | `e` | edit |
 | `d` | delete |
 | `u` | undo delete |

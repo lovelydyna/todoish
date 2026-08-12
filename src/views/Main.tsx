@@ -164,6 +164,11 @@ export function Main({
           {loading && <span className="syncing topbar-icon">⟳</span>}
           <button
             className="topbar-icon-btn"
+            title={`new item [${bindings["add"]}]`}
+            onClick={() => setAdding(true)}
+          >+</button>
+          <button
+            className="topbar-icon-btn"
             title={`history [${bindings["history"]}]`}
             onClick={onHistory}
           >◴</button>

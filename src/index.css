@@ -1035,12 +1035,14 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 10px;
+  min-width: 96px;
+  padding: 8px 20px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: none;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   transition: color 80ms, border-color 80ms;
