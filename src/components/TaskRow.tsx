@@ -1,30 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Task } from "../types";
-import { timeHint } from "../lib/timeHint";
+import { Item } from "../types";
+import { timeHint, isOverdue } from "../lib/timeHint";
+import { actionDate } from "../lib/groupTasks";
+import { StatusBox } from "./StatusBox";
 
 interface TaskRowProps {
-  task: Task;
+  item: Item;
   selected: boolean;
+  expanded: boolean;
   onClick: () => void;
   onCycle: () => void;
 }
 
-function statusSymbol(status: string): string {
-  switch (status) {
-    case "In Progress": return "~";
-    case "Done":        return "✓";
-    default:            return " ";
-  }
-}
-
-export function TaskRow({ task, selected, onClick, onCycle }: TaskRowProps) {
-  const hint = timeHint(task.due, task.energy);
-  const isOverdue = hint.includes("overdue");
-  const isDone = task.status === "Done";
+export function TaskRow({ item, selected, expanded, onClick, onCycle }: TaskRowProps) {
+  const due = actionDate(item);
+  const hint = timeHint(due);
+  const overdue = isOverdue(due);
+  const isDone = item.status === "Done";
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    invoke("open_in_notion", { taskId: task.id });
+    invoke("open_in_notion", { itemId: item.id });
   };
 
   return (
@@ -33,22 +29,21 @@ export function TaskRow({ task, selected, onClick, onCycle }: TaskRowProps) {
       onClick={onClick}
       onContextMenu={handleContextMenu}
     >
-      <span className="task-cursor">{selected ? "▶" : " "}</span>
-      <span
-        className={`task-check ${isDone ? "task-check--done" : task.status === "In Progress" ? "task-check--progress" : ""}`}
-        title="cycle status"
-        onClick={(e) => { e.stopPropagation(); onCycle(); }}
-      >
-        [{statusSymbol(task.status)}]
-      </span>
-      <span className="task-title">{task.title}</span>
-      {hint && !isDone && (
-        <span className={`task-hint ${isOverdue ? "task-hint--overdue" : ""}`}>
-          {hint}
-        </span>
-      )}
-      {task.priority === "High" && !isDone && (
-        <span className="task-priority">!</span>
+      <div className="task-row-main">
+        <span className="task-cursor">{selected ? "▶" : " "}</span>
+        <StatusBox status={item.status} onCycle={onCycle} />
+        <span className="task-title">{item.name}</span>
+        {item.description && !expanded && (
+          <span className="task-has-note" title="has a description">·</span>
+        )}
+        {hint && !isDone && (
+          <span className={`task-hint ${overdue ? "task-hint--overdue" : ""}`}>
+            {hint}
+          </span>
+        )}
+      </div>
+      {expanded && item.description && (
+        <div className="row-description">{item.description}</div>
       )}
     </div>
   );

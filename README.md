@@ -28,23 +28,63 @@ On first launch you'll be prompted for a Notion API key and database ID.
 
 ## notion setup
 
-**1. Create an integration**
-notion.so → Settings → Connections → Develop or manage integrations → New integration → copy the secret key
+**1. Create a connection**
+Notion developer portal → New connection → **Configuration** tab → copy the
+*internal connection token*. (Not the personal access token — that one is
+user-scoped and meant for a different job.)
 
-**2. Create a database** with these properties:
+**2. Create one database** with exactly these five properties:
 
-| Property | Type | Options |
+| Property | Type | Notes |
 |---|---|---|
-| Name | Title | |
-| Status | Select | `Todo` · `In Progress` · `Done` · `Snoozed` |
-| Due | Date | include time |
-| Priority | Select | `High` · `Medium` · `Low` |
-| Energy | Select | `High` · `Low` · `Quick` |
-| Snooze Until | Date | include time |
+| Name | Title | what it is |
+| Status | Status | `Todo` · `In Progress` · `Done` |
+| Time | Date | when it happens — include time; ranges supported |
+| Deadline | Date | when it must be finished by |
+| Description | Text | free-form notes |
 
 **3. Connect your integration** to the database (··· menu → Connections)
 
-**4. Copy the database ID** from the URL: `notion.so/{workspace}/{database_id}?v=...`
+**4. Copy the ID.** Either the one in the database URL
+(`notion.so/{workspace}/{id}?v=...`) or ··· → **Manage data sources** → **Copy
+data source ID**. Todoish accepts either and resolves it — Notion's 2025-09-03
+API addresses a *data source* rather than a database, and the app looks up the
+data source for you when you paste a database id.
+
+---
+
+## two views, one database
+
+The same rows are read two ways. Press `c` to switch.
+
+**Task list** groups by *when you must act* — deadline first, falling back to
+the scheduled time — into NOW, NEXT, LATER and DONE.
+
+**Calendar** groups by *when it happens* — scheduled time first, falling back to
+the deadline:
+
+- **TODAY** and **TOMORROW**, then one dated section per day for the next five days
+- a **week strip** across the top; click any day to filter to it
+- press `m` for an **Itsycal-style month grid** — today ringed, a dot on every
+  day with something on it, `←`/`→` to page between months, click a day to filter
+- `esc` peels back one layer at a time: day filter → month view → task list
+
+Rows show `status · time · name · deadline`. `space` cycles status, `x` expands
+the description, `n` adds, `e` edits, `d` deletes, right-click opens it in Notion.
+
+Time input accepts `today 3pm`, `tmrw 9:00-10:30`, `2026-08-15 14:00`, or a bare
+`2026-08-15` for an all-day item.
+
+Design rationale: [docs/adr/0001](docs/adr/0001-one-notion-database.md).
+
+---
+
+## appearance
+
+**settings → appearance** has a light / dark / **auto** switch — auto follows your
+system setting and repaints when the OS flips. Each of the four themes
+(midnight, ember, forest, mono) ships a light and a dark palette, and the
+opacity slider controls how much desktop shows through the blur.
 
 ---
 
@@ -55,15 +95,19 @@ notion.so → Settings → Connections → Develop or manage integrations → Ne
 | `j / ↓` | move down |
 | `k / ↑` | move up |
 | `space` | cycle status |
-| `n` | add task |
-| `s` | snooze |
-| `f` | focus mode |
-| `e` | edit task (in focus mode) |
-| `d` | delete task |
+| `n` | add item |
+| `c` | calendar (toggle) |
+| `m` | month view (in calendar) |
+| `x` | expand description |
+| `h` | activity history |
+| `←` `→` | previous / next month |
+| `e` | edit |
+| `d` | delete |
 | `u` | undo delete |
+| `D` | toggle done archive |
 | `r` | refresh |
 | `,` | settings |
-| `?` | help |
+| `?` | keybindings |
 
 ---
 
