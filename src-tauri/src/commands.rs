@@ -1,9 +1,9 @@
 use crate::config::{load_config, save_config, Config};
-use crate::notion::{self, Task};
+use crate::notion::{self, Item};
 use std::sync::Mutex;
 use tauri::State;
 
-pub struct TaskCache(pub Mutex<Vec<Task>>);
+pub struct ItemCache(pub Mutex<Vec<Item>>);
 
 #[tauri::command]
 pub async fn get_config() -> Option<Config> {
@@ -11,19 +11,29 @@ pub async fn get_config() -> Option<Config> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_config_cmd(
     api_key: String,
     database_id: String,
     completion_tone: String,
     startup_position: String,
     always_on_top: bool,
+    global_shortcut: String,
+    theme: String,
+    color_mode: String,
+    window_opacity: f64,
 ) -> Result<(), String> {
+    notion::forget_sources();
     save_config(&Config {
         notion_api_key: api_key,
         database_id,
         completion_tone,
         startup_position,
         always_on_top,
+        global_shortcut,
+        theme,
+        color_mode,
+        window_opacity,
     })
 }
 
@@ -57,49 +67,38 @@ pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), S
     }
 }
 
+/// Checks a database and reports which property the app matched to each role.
 #[tauri::command]
-pub async fn get_tasks(cache: State<'_, TaskCache>) -> Result<Vec<Task>, String> {
-    Ok(cache.0.lock().unwrap().clone())
+pub async fn describe_schema(
+    api_key: String,
+    database_id: String,
+) -> Result<notion::SchemaReport, String> {
+    notion::describe_schema(&api_key, &database_id).await
 }
 
 #[tauri::command]
-pub async fn trigger_sync(cache: State<'_, TaskCache>) -> Result<Vec<Task>, String> {
+pub async fn get_items(cache: State<'_, ItemCache>) -> Result<Vec<Item>, String> {
+    Ok(cache.0.lock().expect("item cache poisoned").clone())
+}
+
+#[tauri::command]
+pub async fn trigger_sync(cache: State<'_, ItemCache>) -> Result<Vec<Item>, String> {
     let config = load_config().ok_or("No config — please set up your Notion API key first")?;
-    let tasks = notion::fetch_tasks(&config.notion_api_key, &config.database_id).await?;
-    *cache.0.lock().unwrap() = tasks.clone();
-    Ok(tasks)
+    let items = notion::fetch_items(&config.notion_api_key, &config.database_id).await?;
+    *cache.0.lock().expect("item cache poisoned") = items.clone();
+    Ok(items)
 }
 
-/// Marks a task directly as Done (used by Focus mode).
+/// Cycles an item forward: Todo → In Progress → Done → Todo.
+/// Returns the new status so the frontend can update optimistically.
 #[tauri::command]
-pub async fn complete_task(
-    task_id: String,
-    cache: State<'_, TaskCache>,
-) -> Result<(), String> {
-    let config = load_config().ok_or("No config")?;
-    notion::set_task_status(&config.notion_api_key, &task_id, "Done").await?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut locked = cache.0.lock().unwrap();
-    if let Some(task) = locked.iter_mut().find(|t| t.id == task_id) {
-        task.status = "Done".to_string();
-        task.last_edited_time = Some(now);
-    }
-    Ok(())
-}
-
-/// Cycles a task forward: Todo → In Progress → Done → Todo.
-/// Returns the new status string so the frontend can update optimistically.
-#[tauri::command]
-pub async fn cycle_status(
-    task_id: String,
-    cache: State<'_, TaskCache>,
-) -> Result<String, String> {
+pub async fn cycle_status(item_id: String, cache: State<'_, ItemCache>) -> Result<String, String> {
     let current = {
-        let locked = cache.0.lock().unwrap();
+        let locked = cache.0.lock().expect("item cache poisoned");
         locked
             .iter()
-            .find(|t| t.id == task_id)
-            .map(|t| t.status.clone())
+            .find(|i| i.id == item_id)
+            .map(|i| i.status.clone())
             .unwrap_or_else(|| "Todo".to_string())
     };
 
@@ -110,87 +109,96 @@ pub async fn cycle_status(
     };
 
     let config = load_config().ok_or("No config")?;
-    notion::set_task_status(&config.notion_api_key, &task_id, next).await?;
+    notion::set_item_status(&config.notion_api_key, &config.database_id, &item_id, next).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
-    let mut locked = cache.0.lock().unwrap();
-    if let Some(task) = locked.iter_mut().find(|t| t.id == task_id) {
-        task.status = next.to_string();
-        task.last_edited_time = Some(now);
+    let mut locked = cache.0.lock().expect("item cache poisoned");
+    if let Some(item) = locked.iter_mut().find(|i| i.id == item_id) {
+        item.status = next.to_string();
+        item.last_edited_time = Some(now);
     }
 
     Ok(next.to_string())
 }
 
 #[tauri::command]
-pub async fn create_task(
-    title: String,
-    due: Option<String>,
-    priority: Option<String>,
-    energy: Option<String>,
-    cache: State<'_, TaskCache>,
-) -> Result<Task, String> {
+pub async fn create_item(
+    name: String,
+    start: Option<String>,
+    end: Option<String>,
+    deadline: Option<String>,
+    description: Option<String>,
+    cache: State<'_, ItemCache>,
+) -> Result<Item, String> {
     let config = load_config().ok_or("No config")?;
-    let task = notion::create_task(
+    let item = notion::create_item(
         &config.notion_api_key,
         &config.database_id,
-        &title,
-        due.as_deref(),
-        priority.as_deref(),
-        energy.as_deref(),
+        &name,
+        start.as_deref(),
+        end.as_deref(),
+        deadline.as_deref(),
+        description.as_deref(),
     )
     .await?;
-    cache.0.lock().unwrap().push(task.clone());
-    Ok(task)
+    cache
+        .0
+        .lock()
+        .expect("item cache poisoned")
+        .push(item.clone());
+    Ok(item)
 }
 
 #[tauri::command]
-pub async fn update_task_cmd(
-    task_id: String,
-    title: String,
-    due: Option<String>,
-    priority: Option<String>,
-    energy: Option<String>,
-    notes: Option<String>,
-    cache: State<'_, TaskCache>,
+pub async fn update_item_cmd(
+    item_id: String,
+    name: String,
+    start: Option<String>,
+    end: Option<String>,
+    deadline: Option<String>,
+    description: Option<String>,
+    cache: State<'_, ItemCache>,
 ) -> Result<(), String> {
     let config = load_config().ok_or("No config")?;
-    notion::update_task(
+    notion::update_item(
         &config.notion_api_key,
-        &task_id,
-        &title,
-        due.as_deref(),
-        priority.as_deref(),
-        energy.as_deref(),
-        notes.as_deref(),
+        &config.database_id,
+        &item_id,
+        &name,
+        start.as_deref(),
+        end.as_deref(),
+        deadline.as_deref(),
+        description.as_deref(),
     )
     .await?;
-    let mut locked = cache.0.lock().unwrap();
-    if let Some(task) = locked.iter_mut().find(|t| t.id == task_id) {
-        task.title = title;
-        task.due = due;
-        task.priority = priority;
-        task.energy = energy;
-        task.notes = notes;
+
+    let mut locked = cache.0.lock().expect("item cache poisoned");
+    if let Some(item) = locked.iter_mut().find(|i| i.id == item_id) {
+        item.name = name;
+        item.start = start.filter(|s| !s.is_empty());
+        item.end = end.filter(|s| !s.is_empty());
+        item.deadline = deadline.filter(|s| !s.is_empty());
+        item.description = description.filter(|s| !s.is_empty());
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_task(
-    task_id: String,
-    cache: State<'_, TaskCache>,
-) -> Result<(), String> {
+pub async fn delete_item(item_id: String, cache: State<'_, ItemCache>) -> Result<(), String> {
     let config = load_config().ok_or("No config")?;
-    notion::archive_task(&config.notion_api_key, &task_id).await?;
-    cache.0.lock().unwrap().retain(|t| t.id != task_id);
+    notion::archive_item(&config.notion_api_key, &item_id).await?;
+    cache
+        .0
+        .lock()
+        .expect("item cache poisoned")
+        .retain(|i| i.id != item_id);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn open_in_notion(task_id: String) -> Result<(), String> {
+pub async fn open_in_notion(item_id: String) -> Result<(), String> {
     // Notion page URLs use the ID without dashes
-    let clean_id = task_id.replace('-', "");
+    let clean_id = item_id.replace('-', "");
     let url = format!("https://notion.so/{}", clean_id);
     std::process::Command::new("open")
         .arg(&url)
@@ -198,4 +206,3 @@ pub async fn open_in_notion(task_id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     Ok(())
 }
-

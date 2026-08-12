@@ -3,12 +3,72 @@ mod config;
 mod notion;
 mod sync;
 
-use commands::TaskCache;
+use commands::ItemCache;
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+
+/// Window corner radius. Kept in sync with `--window-radius` in index.css.
+const WINDOW_RADIUS: f64 = 14.0;
+
+/// Brings the window to the front, or hides it if it is already frontmost.
+fn toggle_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else { return };
+
+    let visible = window.is_visible().unwrap_or(false);
+    let focused = window.is_focused().unwrap_or(false);
+
+    if visible && focused {
+        let _ = window.hide();
+        return;
+    }
+
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+
+    // Without this the window can rise behind the app you pressed the key in.
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::ActivationPolicy;
+        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+    }
+}
+
+/// Binds the configured system-wide hotkey. A blank setting disables it, and a
+/// shortcut the OS refuses (already taken by another app) is skipped rather
+/// than failing startup — the tray icon still opens the window.
+fn register_global_shortcut(app: &tauri::AppHandle) {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    let accelerator = config::load_config()
+        .map(|c| c.global_shortcut)
+        .unwrap_or_else(default_shortcut);
+    let accelerator = accelerator.trim().to_string();
+    if accelerator.is_empty() {
+        return;
+    }
+
+    let result = app.global_shortcut().on_shortcut(
+        accelerator.as_str(),
+        move |app, _shortcut, event| {
+            // Fires on press and release; acting on both would toggle twice.
+            if event.state() == ShortcutState::Pressed {
+                toggle_window(app);
+            }
+        },
+    );
+
+    if let Err(e) = result {
+        eprintln!("could not register global shortcut `{accelerator}`: {e}");
+    }
+}
+
+fn default_shortcut() -> String {
+    "CmdOrControl+Shift+T".to_string()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,37 +77,42 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .manage(TaskCache(Mutex::new(vec![])))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .manage(ItemCache(Mutex::new(vec![])))
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::save_config_cmd,
-            commands::get_tasks,
+            commands::describe_schema,
+            commands::get_items,
             commands::trigger_sync,
-            commands::complete_task,
             commands::cycle_status,
-            commands::create_task,
+            commands::create_item,
+            commands::update_item_cmd,
+            commands::delete_item,
             commands::get_autostart,
             commands::set_autostart,
-            commands::delete_task,
             commands::open_in_notion,
-            commands::update_task_cmd,
             commands::set_always_on_top,
             commands::quit_app,
         ])
         .setup(|app| {
+            register_global_shortcut(app.handle());
+
             let handle1 = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
                 sync::start_sync_loop(handle1).await;
             });
 
-            // Apply native macOS blur — follows window focus so it dims when inactive
+            // Apply native macOS blur — follows window focus so it dims when inactive.
+            // The radius must match --window-radius in index.css, or the square
+            // corners of the native blur view show past the rounded web layer.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = apply_vibrancy(
                     &window,
                     NSVisualEffectMaterial::HudWindow,
                     Some(NSVisualEffectState::FollowsWindowActiveState),
-                    Some(10.0),
+                    Some(WINDOW_RADIUS),
                 );
             }
 

@@ -3,11 +3,15 @@ export type Action =
   | "move-up"
   | "add"
   | "cycle-status"
-  | "focus"
   | "edit"
   | "delete"
   | "undo"
   | "toggle-done"
+  | "calendar"
+  | "month"
+  | "expand"
+  | "history"
+  | "today"
   | "refresh"
   | "settings"
   | "help";
@@ -15,13 +19,17 @@ export type Action =
 export const ACTION_LABELS: Record<Action, string> = {
   "move-down":    "move down",
   "move-up":      "move up",
-  "add":          "add task",
+  "add":          "add item",
   "cycle-status": "cycle status",
-  "focus":        "focus mode",
-  "edit":         "edit (in focus)",
+  "edit":         "edit",
   "delete":       "delete",
   "undo":         "undo delete",
   "toggle-done":  "toggle done archive",
+  "calendar":     "calendar",
+  "month":        "month view",
+  "expand":       "expand description",
+  "history":      "history",
+  "today":        "jump to today",
   "refresh":      "refresh",
   "settings":     "settings",
   "help":         "help",
@@ -29,8 +37,8 @@ export const ACTION_LABELS: Record<Action, string> = {
 
 export const ACTION_SECTIONS: { label: string; actions: Action[] }[] = [
   { label: "navigation", actions: ["move-down", "move-up"] },
-  { label: "tasks",      actions: ["add", "cycle-status", "focus", "edit", "delete", "undo"] },
-  { label: "view",       actions: ["toggle-done", "refresh"] },
+  { label: "tasks",      actions: ["add", "cycle-status", "edit", "delete", "undo"] },
+  { label: "view",       actions: ["toggle-done", "calendar", "month", "today", "expand", "history", "refresh"] },
   { label: "app",        actions: ["settings", "help"] },
 ];
 
@@ -41,11 +49,15 @@ export const DEFAULTS: Bindings = {
   "move-up":      "ArrowUp",
   "add":          "n",
   "cycle-status": " ",
-  "focus":        "f",
   "edit":         "e",
   "delete":       "d",
   "undo":         "u",
   "toggle-done":  "D",
+  "calendar":     "c",
+  "month":        "m",
+  "expand":       "x",
+  "history":      "h",
+  "today":        "T",
   "refresh":      "r",
   "settings":     ",",
   "help":         "?",

@@ -1,51 +1,63 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { Task } from "../types";
-import { useTasks } from "../hooks/useTasks";
+import { Item } from "../types";
+import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
-import { groupTasks, flattenGroups } from "../lib/groupTasks";
-import { ACTION_LABELS, ACTION_SECTIONS, Action, keyLabel, actionForKey, DEFAULTS } from "../lib/keybindings";
+import { groupTasks, flattenGroups, TASK_GROUP_ORDER } from "../lib/groupTasks";
 import { TaskGroup } from "../components/TaskGroup";
-import { QuickAdd } from "../components/QuickAdd";
+import { ItemEdit } from "../components/ItemEdit";
 import { WindowControls } from "../components/WindowControls";
+import { ViewSwitch } from "../components/ViewSwitch";
+import { SettingsTab } from "./Setup";
 
 interface MainProps {
-  onFocus: (task: Task) => void;
-  onSettings: () => void;
+  items: Item[];
+  loading: boolean;
+  error: string | null;
+  onCycle: (itemId: string) => void;
+  onAdd: (fields: ItemFields) => Promise<void>;
+  onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
+  onDelete: (itemId: string) => void;
+  onRefresh: () => void;
+  onSettings: (tab?: SettingsTab) => void;
+  onCalendar: () => void;
+  onHistory: () => void;
 }
 
 interface PendingDelete {
-  task: Task;
+  item: Item;
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
-export function Main({ onFocus, onSettings }: MainProps) {
-  const { tasks, loading, error, cycleStatus, addTask, deleteTask, refresh } = useTasks();
-  const { bindings, updateBinding, resetBindings } = useKeybindings();
+export function Main({
+  items, loading, error,
+  onCycle, onAdd, onUpdate, onDelete, onRefresh,
+  onSettings, onCalendar, onHistory,
+}: MainProps) {
+  const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [showHelp, setShowHelp] = useState(false);
   const [showAllDone, setShowAllDone] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Item | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
-  const [capturing, setCapturing] = useState<Action | null>(null);
-  const [captureError, setCaptureError] = useState<string | null>(null);
   const pendingDeleteRef = useRef<PendingDelete | null>(null);
 
   useEffect(() => { pendingDeleteRef.current = pendingDelete; }, [pendingDelete]);
 
-  const commitDelete = useCallback((task: Task) => {
-    deleteTask(task.id);
+  const commitDelete = useCallback((item: Item) => {
+    onDelete(item.id);
     setPendingDelete(null);
-  }, [deleteTask]);
+  }, [onDelete]);
 
-  const startPendingDelete = useCallback((task: Task) => {
+  const startPendingDelete = useCallback((item: Item) => {
     if (pendingDeleteRef.current) {
       clearTimeout(pendingDeleteRef.current.timeoutId);
-      commitDelete(pendingDeleteRef.current.task);
+      commitDelete(pendingDeleteRef.current.item);
     }
-    const timeoutId = setTimeout(() => commitDelete(task), 5 * 60 * 1000);
-    setPendingDelete({ task, timeoutId });
+    const timeoutId = setTimeout(() => commitDelete(item), 5 * 60 * 1000);
+    setPendingDelete({ item, timeoutId });
   }, [commitDelete]);
 
   const undoDelete = useCallback(() => {
@@ -55,51 +67,45 @@ export function Main({ onFocus, onSettings }: MainProps) {
     setPendingDelete(null);
   }, []);
 
-  const visibleTasks = useMemo(
-    () => pendingDelete ? tasks.filter((t) => t.id !== pendingDelete.task.id) : tasks,
-    [tasks, pendingDelete]
+  const visibleItems = useMemo(
+    () => pendingDelete ? items.filter((i) => i.id !== pendingDelete.item.id) : items,
+    [items, pendingDelete]
   );
 
-  const groups = useMemo(() => groupTasks(visibleTasks, showAllDone), [visibleTasks, showAllDone]);
+  const groups = useMemo(() => groupTasks(visibleItems, showAllDone), [visibleItems, showAllDone]);
   const flat = useMemo(() => flattenGroups(groups), [groups]);
 
   const safeIndex = Math.min(selectedIndex, Math.max(0, flat.length - 1));
   const selected = flat[safeIndex] ?? null;
 
-  const handleQuickAdd = useCallback(async (fields: { title: string; due: string | null; priority: string | null; energy: string | null }) => {
-    setAdding(false);
-    await addTask(fields.title, fields.due, fields.priority, fields.energy);
-  }, [addTask]);
+  // Clicking a row selects it and toggles its description, as in the calendar.
+  const selectRow = useCallback((item: Item) => {
+    setSelectedIndex(flat.indexOf(item));
+    setExpandedId((id) => (id === item.id ? null : item.id));
+  }, [flat]);
 
-  // Capture mode: intercept next keypress and save as new binding
-  useEffect(() => {
-    if (!capturing) return;
-    const handler = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key === "Escape") { setCapturing(null); setCaptureError(null); return; }
-      // Block modifier-only keys
-      if (["Meta", "Control", "Alt", "Shift"].includes(e.key)) return;
-      // Block ⌘ combos — those are reserved
-      if (e.metaKey) { setCaptureError("⌘ shortcuts are reserved"); return; }
-      // Warn on duplicate
-      const existing = actionForKey(bindings, e.key);
-      if (existing && existing !== capturing) {
-        setCaptureError(`already used by "${ACTION_LABELS[existing]}" — reassigning`);
-      } else {
-        setCaptureError(null);
-      }
-      updateBinding(capturing, e.key);
-      setCapturing(null);
-    };
-    window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
-  }, [capturing, bindings, updateBinding]);
+  const closeEditor = useCallback(() => {
+    setAdding(false);
+    setEditing(null);
+  }, []);
+
+  const handleSubmit = useCallback(async (fields: ItemFields) => {
+    if (editing) {
+      const id = editing.id;
+      setEditing(null);
+      await onUpdate(id, fields);
+      return;
+    }
+    setAdding(false);
+    await onAdd(fields);
+  }, [editing, onAdd, onUpdate]);
+
+  const editorOpen = adding || !!editing;
 
   const handleKey = useCallback(
     (key: string, e: KeyboardEvent) => {
-      if (adding || capturing) return;
-      if (e.metaKey && key === "r") { e.preventDefault(); refresh(); return; }
+      if (editorOpen) return;
+      if (e.metaKey && key === "r") { e.preventDefault(); onRefresh(); return; }
 
       if (confirmDelete) {
         if (key === "Enter") { startPendingDelete(confirmDelete); setConfirmDelete(null); }
@@ -107,32 +113,39 @@ export function Main({ onFocus, onSettings }: MainProps) {
         return;
       }
 
-      if (showHelp) {
-        if (key === "Escape") setShowHelp(false);
-        return;
-      }
-
-      if (key === bindings["move-down"])    setSelectedIndex((i) => Math.min(i + 1, flat.length - 1));
-      else if (key === "j")                 setSelectedIndex((i) => Math.min(i + 1, flat.length - 1));
-      else if (key === bindings["move-up"]) setSelectedIndex((i) => Math.max(i - 1, 0));
-      else if (key === "k")                 setSelectedIndex((i) => Math.max(i - 1, 0));
-      else if (key === bindings["cycle-status"] && selected) cycleStatus(selected.id);
-      else if (key === bindings["focus"] && selected && selected.status !== "Done") onFocus(selected);
-      else if (key === bindings["refresh"]) refresh();
+      if (key === bindings["move-down"] || key === "j")
+        setSelectedIndex((i) => Math.min(i + 1, flat.length - 1));
+      else if (key === bindings["move-up"] || key === "k")
+        setSelectedIndex((i) => Math.max(i - 1, 0));
+      else if (key === bindings["cycle-status"] && selected) { e.preventDefault(); onCycle(selected.id); }
+      else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["add"])     { e.preventDefault(); setAdding(true); }
-      else if (key === bindings["help"])    setShowHelp((v) => !v);
+      else if (key === bindings["edit"] && selected) { e.preventDefault(); setEditing(selected); }
+      else if (key === bindings["help"])    onSettings("keybindings");
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["toggle-done"]) setShowAllDone((v) => !v);
       else if (key === bindings["undo"])    undoDelete();
+      else if (key === bindings["expand"] && selected)
+        setExpandedId((id) => (id === selected.id ? null : selected.id));
+      else if (key === bindings["calendar"]) onCalendar();
+      else if (key === bindings["history"]) onHistory();
+      else if (key === bindings["today"]) {
+        // "Today" in a list is the top of NOW — what is due now or overdue.
+        setSelectedIndex(0);
+        setExpandedId(null);
+      }
       else if (key === bindings["settings"]) onSettings();
     },
-    [showHelp, adding, capturing, confirmDelete, selected, flat, bindings,
-     cycleStatus, startPendingDelete, undoDelete, onFocus, onSettings, refresh, showAllDone]
+    [editorOpen, confirmDelete, selected, flat, bindings,
+     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar, onHistory,
+     onRefresh, showAllDone]
   );
 
   useKeyboard(handleKey);
 
-  const activeTasks = groups.NOW.length + groups.NEXT.length + groups.LATER.length;
+  const activeItems = TASK_GROUP_ORDER
+    .filter((g) => g !== "DONE")
+    .reduce((n, g) => n + groups[g].length, 0);
 
   return (
     <div className="main" tabIndex={-1}>
@@ -140,43 +153,54 @@ export function Main({ onFocus, onSettings }: MainProps) {
         <div className="topbar-left">
           <WindowControls />
         </div>
-        <div className="topbar-center" data-tauri-drag-region>
-          <span className="brand" data-tauri-drag-region>todoish</span>
+        <div className="topbar-center">
+          <ViewSwitch
+            active="tasks"
+            toggleKey={bindings["calendar"]}
+            onSelect={(v) => { if (v === "calendar") onCalendar(); }}
+          />
         </div>
         <div className="topbar-right">
           {loading && <span className="syncing topbar-icon">⟳</span>}
-          <button className="topbar-icon-btn" title="help" onClick={() => setShowHelp(true)}>?</button>
-          <button className="topbar-icon-btn" title="settings" onClick={onSettings}>⚙</button>
+          <button
+            className="topbar-icon-btn"
+            title={`history [${bindings["history"]}]`}
+            onClick={onHistory}
+          >◴</button>
+          <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
 
-      {!loading && activeTasks === 0 && groups.DONE.length === 0 && !error && (
+      {!loading && activeItems === 0 && groups.DONE.length === 0 && !error && (
         <div className="empty">
           <div className="empty-icon">✓</div>
           <div>all clear</div>
-          <div className="empty-hint">[r] refresh</div>
+          <div className="empty-hint">[{bindings["add"]}] new · [{bindings["refresh"]}] refresh</div>
         </div>
       )}
 
       <div className="task-list">
-        <TaskGroup label="NOW"  tasks={groups.NOW}  selectedId={selected?.id ?? null}
-          onSelect={(t) => setSelectedIndex(flat.indexOf(t))} onCycle={(t) => cycleStatus(t.id)} />
-        <TaskGroup label="NEXT" tasks={groups.NEXT} selectedId={selected?.id ?? null}
-          onSelect={(t) => setSelectedIndex(flat.indexOf(t))} onCycle={(t) => cycleStatus(t.id)} />
-        <TaskGroup label="LATER" tasks={groups.LATER} selectedId={selected?.id ?? null}
-          onSelect={(t) => setSelectedIndex(flat.indexOf(t))} onCycle={(t) => cycleStatus(t.id)} />
-        <TaskGroup label={showAllDone ? "DONE · all" : "DONE"} tasks={groups.DONE}
-          selectedId={selected?.id ?? null}
-          onSelect={(t) => setSelectedIndex(flat.indexOf(t))} onCycle={(t) => cycleStatus(t.id)} />
+        {TASK_GROUP_ORDER.map((group) => (
+          <TaskGroup
+            key={group}
+            group={group}
+            label={group === "DONE" && showAllDone ? "DONE · all" : group}
+            items={groups[group]}
+            selectedId={selected?.id ?? null}
+            expandedId={expandedId}
+            onSelect={selectRow}
+            onCycle={(t) => onCycle(t.id)}
+          />
+        ))}
       </div>
 
       {confirmDelete && (
         <div className="overlay" onClick={() => setConfirmDelete(null)}>
           <div className="confirm-delete" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-title">delete task?</div>
-            <div className="confirm-task">"{confirmDelete.title}"</div>
+            <div className="confirm-title">delete?</div>
+            <div className="confirm-task">"{confirmDelete.name}"</div>
             <div className="confirm-actions">
               <button className="confirm-yes" onClick={() => { startPendingDelete(confirmDelete); setConfirmDelete(null); }}>
                 [enter] delete
@@ -189,60 +213,16 @@ export function Main({ onFocus, onSettings }: MainProps) {
         </div>
       )}
 
-      {adding && (
-        <div className="overlay" onClick={() => setAdding(false)}>
-          <QuickAdd onSubmit={handleQuickAdd} onClose={() => setAdding(false)} />
+      {editorOpen && (
+        <div className="overlay" onClick={closeEditor}>
+          <ItemEdit
+            item={editing ?? undefined}
+            onSubmit={handleSubmit}
+            onClose={closeEditor}
+          />
         </div>
       )}
 
-      {showHelp && (
-        <div className="overlay" onClick={() => { if (!capturing) setShowHelp(false); }}>
-          <div className="help-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="help-menu-header">
-              <span className="help-title">keybindings</span>
-              <button
-                className="help-reset"
-                title="reset all keybindings to defaults"
-                onClick={() => { resetBindings(); setCaptureError(null); }}
-              >
-                ↺
-              </button>
-            </div>
-
-            {captureError && <div className="help-capture-error">{captureError}</div>}
-
-            {ACTION_SECTIONS.map((section) => (
-              <div key={section.label}>
-                <div className="help-section">{section.label}</div>
-                {section.actions.map((action) => {
-                  const isCapturing = capturing === action;
-                  const isDefault = bindings[action] === DEFAULTS[action];
-                  return (
-                    <div
-                      key={action}
-                      className={`help-row help-row--bindable${isCapturing ? " help-row--capturing" : ""}`}
-                      onClick={() => { setCapturing(action); setCaptureError(null); }}
-                      title="click to rebind"
-                    >
-                      <span className={`help-key${!isDefault ? " help-key--custom" : ""}`}>
-                        {isCapturing ? "press a key…" : keyLabel(bindings[action])}
-                      </span>
-                      {ACTION_LABELS[action]}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-
-            <div className="help-section">app (fixed)</div>
-            <div className="help-row"><span className="help-key">⌘W / ⌘H</span> hide</div>
-            <div className="help-row"><span className="help-key">⌘Q</span> quit</div>
-            <div className="help-row"><span className="help-key">⌘R</span> refresh</div>
-
-            <div className="help-dismiss">click a key to rebind · esc to cancel capture</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

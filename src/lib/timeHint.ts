@@ -1,29 +1,46 @@
-export function timeHint(due: string | null, energy: string | null): string {
-  if (energy === "Quick") return "quick";
+import { parseDueDate } from "./groupTasks";
+
+/**
+ * The date marker on a task row.
+ *
+ * Rows show a *date*, not a clock time: a task list answers "which day" far
+ * more often than "what minute", and a column of "9:00 AM" reads as noise when
+ * every row has one. The clock still appears in the calendar, where the time
+ * of day is the whole point.
+ */
+export function timeHint(due: string | null, now = new Date()): string {
   if (!due) return "";
 
-  const dueDate = new Date(due);
-  const now = new Date();
-  const diffMs = dueDate.getTime() - now.getTime();
-  const diffH = diffMs / (1000 * 60 * 60);
+  const date = parseDueDate(due);
+  if (isNaN(date.getTime())) return "";
 
-  if (diffMs < 0) {
-    const overH = Math.abs(diffH);
-    if (overH < 1) return "overdue";
-    return `${Math.round(overH)}h overdue`;
-  }
+  const startOf = (d: Date) => {
+    const copy = new Date(d);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  };
+  const days = Math.round(
+    (startOf(date).getTime() - startOf(now).getTime()) / (24 * 60 * 60 * 1000)
+  );
 
-  if (diffH < 1) {
-    const diffM = Math.round(diffMs / (1000 * 60));
-    return `${diffM}m`;
-  }
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  // Inside the coming week a weekday is easier to place than a date.
+  if (days < 7) return date.toLocaleDateString([], { weekday: "short" });
 
-  if (diffH < 8) {
-    return `${Math.round(diffH)}h`;
-  }
-
-  return dueDate.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
   });
+}
+
+/** True when the marker represents a date that has already passed. */
+export function isOverdue(due: string | null, now = new Date()): boolean {
+  if (!due) return false;
+  const hint = timeHint(due, now);
+  return hint === "yesterday" || hint.endsWith("overdue");
 }

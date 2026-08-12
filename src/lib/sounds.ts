@@ -1,12 +1,60 @@
+/**
+ * Completion tones, synthesised rather than loaded from files — no assets to
+ * bundle and nothing for the CSP to block.
+ *
+ * The desktop catch: an AudioContext does not stay running. Browsers create it
+ * suspended until a user gesture, and WebKit (which is what Tauri renders with
+ * on macOS) suspends it again whenever the window is hidden — which this app
+ * does constantly, since it lives in the tray. A suspended context accepts
+ * every call and plays nothing, so without an explicit resume the sounds work
+ * once and are silent forever after the first hide.
+ */
+
 let ctx: AudioContext | null = null;
 
-function getCtx() {
-  if (!ctx) ctx = new AudioContext();
-  return ctx;
+/** Returns a *running* context, resuming or rebuilding it as needed. */
+async function getCtx(): Promise<AudioContext | null> {
+  const Ctor = window.AudioContext ?? (window as any).webkitAudioContext;
+  if (!Ctor) return null;
+
+  // A closed context can never be resumed — only replaced.
+  if (!ctx || ctx.state === "closed") {
+    try {
+      ctx = new Ctor();
+    } catch {
+      return null;
+    }
+  }
+
+  if (ctx.state !== "running") {
+    try {
+      await ctx.resume();
+    } catch {
+      return null;
+    }
+  }
+
+  // WebKit can report "interrupted"; treat anything but running as unusable
+  // rather than scheduling notes into a context that will never play them.
+  return ctx.state === "running" ? ctx : null;
 }
 
-function bell() {
-  const ac = getCtx();
+/**
+ * Nudges the context back awake when the window returns. Resuming on the way
+ * back in means the first completion after un-hiding is audible, instead of
+ * being the one that silently gets dropped.
+ */
+export function initAudio(): () => void {
+  const wake = () => { if (!document.hidden) void getCtx(); };
+  document.addEventListener("visibilitychange", wake);
+  window.addEventListener("focus", wake);
+  return () => {
+    document.removeEventListener("visibilitychange", wake);
+    window.removeEventListener("focus", wake);
+  };
+}
+
+function bell(ac: AudioContext) {
   const now = ac.currentTime;
   const partials: [number, number, number][] = [
     [880, 0.5, 0.6],
@@ -29,8 +77,7 @@ function bell() {
   });
 }
 
-function chime() {
-  const ac = getCtx();
+function chime(ac: AudioContext) {
   const now = ac.currentTime;
   [523.25, 783.99].forEach((freq, i) => {
     const osc = ac.createOscillator();
@@ -48,8 +95,7 @@ function chime() {
   });
 }
 
-function click() {
-  const ac = getCtx();
+function click(ac: AudioContext) {
   const now = ac.currentTime;
   const buf = ac.createBuffer(1, ac.sampleRate * 0.05, ac.sampleRate);
   const data = buf.getChannelData(0);
@@ -69,9 +115,13 @@ function click() {
   src.start(now);
 }
 
-export function playComplete(tone = "bell") {
+/** Fire-and-forget: a tone must never delay or break the action that caused it. */
+export function playComplete(tone = "bell"): void {
   if (tone === "none") return;
-  if (tone === "chime") return chime();
-  if (tone === "click") return click();
-  bell();
+  void getCtx().then((ac) => {
+    if (!ac) return;
+    if (tone === "chime") return chime(ac);
+    if (tone === "click") return click(ac);
+    bell(ac);
+  });
 }
