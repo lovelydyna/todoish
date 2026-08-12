@@ -198,6 +198,11 @@ export function Calendar({
         <div className="topbar-right">
           {loading && <span className="syncing topbar-icon">⟳</span>}
           <button
+            className="topbar-icon-btn"
+            title={`new event [${bindings["add"]}]`}
+            onClick={() => setAdding(true)}
+          >+</button>
+          <button
             className={`topbar-icon-btn${showMonth ? " topbar-icon-btn--on" : ""}`}
             title="month view"
             onClick={() => setShowMonth((v) => !v)}
