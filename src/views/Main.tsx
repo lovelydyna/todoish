@@ -6,7 +6,6 @@ import { useKeybindings } from "../hooks/useKeybindings";
 import { groupTasks, flattenGroups, TASK_GROUP_ORDER } from "../lib/groupTasks";
 import { TaskGroup } from "../components/TaskGroup";
 import { ItemEdit } from "../components/ItemEdit";
-import { NotesOverlay } from "../components/NotesOverlay";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
 import { SettingsTab } from "./Setup";
@@ -25,7 +24,7 @@ interface MainProps {
   onRefresh: () => void;
   onSettings: (tab?: SettingsTab) => void;
   onCalendar: () => void;
-  onNotes: () => void;
+  onNotes: (startNew?: boolean) => void;
 }
 
 interface PendingDelete {
@@ -45,7 +44,6 @@ export function Main({
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const pendingDeleteRef = useRef<PendingDelete | null>(null);
 
@@ -109,7 +107,7 @@ export function Main({
 
   const handleKey = useCallback(
     (key: string, e: KeyboardEvent) => {
-      if (editorOpen || notesOpen) return;
+      if (editorOpen) return;
       if (e.metaKey && key === "r") { e.preventDefault(); onRefresh(); return; }
 
       if (confirmDelete) {
@@ -140,9 +138,9 @@ export function Main({
         setExpandedId(null);
       }
       else if (key === bindings["settings"]) onSettings();
-      else if (key === bindings["notes"]) { e.preventDefault(); setNotesOpen(true); }
+      else if (key === bindings["notes"]) { e.preventDefault(); onNotes(true); }
     },
-    [editorOpen, notesOpen, confirmDelete, selected, flat, bindings,
+    [editorOpen, confirmDelete, selected, flat, bindings,
      onCycle, startPendingDelete, undoDelete, onSettings, onCalendar, onNotes,
      onRefresh, showAllDone]
   );
@@ -173,7 +171,7 @@ export function Main({
             title={`new item [${bindings["add"]}]`}
             onClick={() => setAdding(true)}
           >+</button>
-          <button className="topbar-icon-btn" title={`notes [${bindings["notes-view"]}]`} onClick={onNotes}>✎</button>
+          <button className="topbar-icon-btn" title={`notes [${bindings["notes-view"]}]`} onClick={() => onNotes()}>✎</button>
           <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
@@ -231,8 +229,6 @@ export function Main({
           />
         </div>
       )}
-
-      {notesOpen && <NotesOverlay onClose={() => setNotesOpen(false)} />}
 
     </div>
   );

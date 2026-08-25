@@ -131,7 +131,7 @@ let accounts = [
     client_id: "demo.apps.googleusercontent.com",
     has_client_secret: true,
     account: "demo.work@ualberta.ca",
-    calendars: [{ id: "primary", name: "demo.work@ualberta.ca" }],
+    calendars: [{ id: "primary", name: "School" }],
     default: true,
   },
   {
@@ -139,7 +139,7 @@ let accounts = [
     client_id: "demo.apps.googleusercontent.com",
     has_client_secret: true,
     account: "demo.personal@gmail.com",
-    calendars: [{ id: "primary", name: "demo.personal@gmail.com" }],
+    calendars: [{ id: "primary", name: "Personal" }],
     default: false,
   },
 ];
@@ -153,12 +153,12 @@ interface DemoCalendar {
 
 const demoCalendarsByAccount: Record<string, DemoCalendar[]> = {
   "acct-work": [
-    { id: "primary", name: "demo.work@ualberta.ca", primary: true, writable: true },
+    { id: "primary", name: "School", primary: true, writable: true },
     { id: "lab@group.calendar.google.com", name: "lab bookings", primary: false, writable: true },
     { id: "dept@group.calendar.google.com", name: "department seminars", primary: false, writable: false },
   ],
   "acct-personal": [
-    { id: "primary", name: "demo.personal@gmail.com", primary: true, writable: true },
+    { id: "primary", name: "Personal", primary: true, writable: true },
   ],
 };
 

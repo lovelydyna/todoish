@@ -29,6 +29,9 @@ export default function App() {
   // there is no choice to make.
   const [calendarAccounts, setCalendarAccounts] = useState<CalendarAccount[]>([]);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  // Whether the notes view, once it mounts, should start a fresh note
+  // rather than reopening whichever one was last open.
+  const [notesStartNew, setNotesStartNew] = useState(false);
 
   // One database, one fetch — both the list and the calendar render this.
   const {
@@ -106,6 +109,11 @@ export default function App() {
 
   const goTo = (next: View) => setView(next);
 
+  const openNotes = (startNew = false) => {
+    setNotesStartNew(startNew);
+    setView("notes");
+  };
+
   const renderView = () => {
     if (view === "loading") {
       return (
@@ -150,11 +158,12 @@ export default function App() {
           onRefresh={refresh}
           onExit={() => goTo("main")}
           onSettings={openSettings}
+          onNotes={openNotes}
         />
       );
     }
     if (view === "notes") {
-      return <Notes onTasks={() => goTo("main")} onSettings={openSettings} />;
+      return <Notes startNew={notesStartNew} onTasks={() => goTo("main")} onSettings={openSettings} />;
     }
     return (
       <Main
@@ -170,7 +179,7 @@ export default function App() {
         onRefresh={refresh}
         onSettings={openSettings}
         onCalendar={() => goTo("calendar")}
-        onNotes={() => goTo("notes")}
+        onNotes={openNotes}
       />
     );
   };

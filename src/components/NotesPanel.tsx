@@ -159,6 +159,8 @@ function prefixLines({ value, start, end }: Selection, makePrefix: (lineIndex: n
 const AUTOSAVE_DELAY = 600;
 
 interface NotesPanelProps {
+  /** Skip reopening the last note and start a fresh one instead. */
+  startNew?: boolean;
   onHome: () => void;
   onSettings: () => void;
 }
@@ -169,7 +171,7 @@ interface NotesPanelProps {
  * icon rather than in a permanent side list — this is a page you write on,
  * not a filing cabinet.
  */
-export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
+export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
   const { bindings } = useKeybindings();
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -218,10 +220,6 @@ export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
       setLoadingContent(false);
     }
   }, []);
-
-  useEffect(() => {
-    loadList().then((list) => { if (list[0]) openNote(list[0].filename); });
-  }, [loadList, openNote]);
 
   // Closes the browse dropdown on an outside click or Escape.
   useEffect(() => {
@@ -350,6 +348,16 @@ export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
     }
   }, [flushPending, loadList, openNote]);
 
+  // On arrival: jump straight to a fresh note when asked (the "q" quick-note
+  // shortcut), otherwise reopen whichever note was last open.
+  useEffect(() => {
+    if (startNew) { createNote(); return; }
+    loadList().then((list) => { if (list[0]) openNote(list[0].filename); });
+    // Mount-only — startNew is a one-time arrival flag, not something that
+    // should re-trigger this while the view stays mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const deleteNote = async (filename: string) => {
     try {
       await invoke("delete_note", { filename });
@@ -380,10 +388,14 @@ export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
 
   // The rebindable single-key layer — only live outside the title/body
   // fields (useKeyboard ignores inputs and textareas), so it never fights
-  // with typing. ⌘O above covers the same action while a note is focused.
+  // with typing. ⌘O/⌘E above cover the same actions while a note is focused.
   const handleKey = useCallback((key: string) => {
     if (key === bindings["browse-notes"]) setBrowsing((v) => !v);
-  }, [bindings]);
+    else if (key === bindings["notes-preview"] && selected) {
+      setFormatting(false);
+      setPreviewing((v) => !v);
+    }
+  }, [bindings, selected]);
   useKeyboard(handleKey);
 
   return (
@@ -399,7 +411,7 @@ export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
             <button
               type="button"
               className={`topbar-icon-btn${previewing ? " topbar-icon-btn--on" : ""}`}
-              title={previewing ? "edit [⌘E]" : "preview [⌘E]"}
+              title={previewing ? `edit [⌘E / ${bindings["notes-preview"]}]` : `preview [⌘E / ${bindings["notes-preview"]}]`}
               onClick={() => { setFormatting(false); setPreviewing((v) => !v); }}
             >{previewing ? "✎" : "◎"}</button>
           )}

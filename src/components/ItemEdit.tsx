@@ -95,11 +95,13 @@ const NOTION_DESTINATION: Destination = {
 function destinationsFor(accounts: CalendarAccount[]): Destination[] {
   const entries: Destination[] = [NOTION_DESTINATION];
   for (const account of accounts) {
-    const label = account.account || "calendar";
     if (account.calendars.length <= 1) {
       entries.push({
         value: `acct:${account.id}`,
-        label,
+        // The calendar's own name ("Personal", "Work") reads far better here
+        // than the linked account's email — fall back to the email only if
+        // nothing's synced yet and there's no name to show.
+        label: account.calendars[0]?.name || account.account || "calendar",
         accountId: account.id,
         calendarId: account.calendars[0]?.id ?? null,
       });
@@ -107,7 +109,7 @@ function destinationsFor(accounts: CalendarAccount[]): Destination[] {
       for (const cal of account.calendars) {
         entries.push({
           value: `acct:${account.id}:${cal.id}`,
-          label: `${label} · ${cal.name}`,
+          label: cal.name,
           accountId: account.id,
           calendarId: cal.id,
         });

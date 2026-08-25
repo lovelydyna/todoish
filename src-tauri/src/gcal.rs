@@ -384,9 +384,19 @@ pub async fn list_calendars(account: &GoogleAccount) -> Result<Vec<CalendarInfo>
                 .iter()
                 .map(|c| {
                     let role = c["accessRole"].as_str().unwrap_or("reader");
+                    // The primary calendar's `summary` defaults to the
+                    // account's email — `summaryOverride` is what shows up
+                    // when the user has actually renamed it (e.g. to
+                    // "Personal" or "Work") in Google Calendar's own
+                    // settings, so it takes priority when present.
+                    let name = c["summaryOverride"]
+                        .as_str()
+                        .or_else(|| c["summary"].as_str())
+                        .unwrap_or("(untitled)")
+                        .to_string();
                     CalendarInfo {
                         id: c["id"].as_str().unwrap_or_default().to_string(),
-                        name: c["summary"].as_str().unwrap_or("(untitled)").to_string(),
+                        name,
                         primary: c["primary"].as_bool().unwrap_or(false),
                         writable: matches!(role, "owner" | "writer"),
                     }

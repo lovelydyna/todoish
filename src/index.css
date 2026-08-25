@@ -390,10 +390,9 @@ input {
   to   { opacity: 1; }
 }
 
-/* Every dialog — create, edit, delete, notes — is the same surface. */
+/* Every dialog — create, edit, delete — is the same surface. */
 .quickadd,
-.confirm-delete,
-.notes-panel {
+.confirm-delete {
   background: rgba(var(--tint-rgb), 0.86);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -411,34 +410,8 @@ input {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .overlay, .quickadd, .confirm-delete, .notes-panel { animation: none; }
+  .overlay, .quickadd, .confirm-delete { animation: none; }
 }
-
-/* ─── Quick notes ─────────────────────────────────────────── */
-.notes-panel {
-  padding: 16px 18px 14px;
-  width: min(480px, 90vw);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.notes-textarea {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 10px 12px;
-  min-height: 220px;
-  resize: vertical;
-  outline: none;
-  -webkit-app-region: no-drag;
-}
-
-.notes-textarea:focus { border-color: var(--accent-blue); }
 
 /* ─── Notes view ─────────────────────────────────────────── */
 /* A single note fills the whole page — title, then body — with every other

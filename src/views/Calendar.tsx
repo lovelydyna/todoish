@@ -7,7 +7,6 @@ import { groupEvents, upcomingByDay, daySections } from "../lib/groupEvents";
 import { addMonths, addWeeks, dayHeading } from "../lib/calendarGrid";
 import { EventGroup } from "../components/EventGroup";
 import { ItemEdit } from "../components/ItemEdit";
-import { NotesOverlay } from "../components/NotesOverlay";
 import { WeekStrip } from "../components/WeekStrip";
 import { MonthGrid } from "../components/MonthGrid";
 import { WindowControls } from "../components/WindowControls";
@@ -31,12 +30,13 @@ interface CalendarProps {
   onRefresh: () => void;
   onExit: () => void;
   onSettings: (tab?: SettingsTab) => void;
+  onNotes: (startNew?: boolean) => void;
 }
 
 export function Calendar({
   items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
-  onExit, onSettings,
+  onExit, onSettings, onNotes,
 }: CalendarProps) {
   const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -51,7 +51,6 @@ export function Calendar({
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
 
   const groups = useMemo(() => groupEvents(items), [items]);
   const upcomingDays = useMemo(() => upcomingByDay(items), [items]);
@@ -121,7 +120,7 @@ export function Calendar({
 
   const handleKey = useCallback(
     (key: string, e: KeyboardEvent) => {
-      if (editingOverlay || notesOpen) return;
+      if (editingOverlay) return;
       if (e.metaKey && key === "r") { e.preventDefault(); onRefresh(); return; }
 
       if (confirmDelete) {
@@ -167,10 +166,10 @@ export function Calendar({
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
-      else if (key === bindings["notes"]) { e.preventDefault(); setNotesOpen(true); }
+      else if (key === bindings["notes"]) { e.preventDefault(); onNotes(true); }
     },
-    [editingOverlay, notesOpen, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
-     onCycle, onDelete, onRefresh, onExit, onSettings, pickDay, changeWeek, goToToday]
+    [editingOverlay, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
+     onCycle, onDelete, onRefresh, onExit, onSettings, onNotes, pickDay, changeWeek, goToToday]
   );
 
   useKeyboard(handleKey);
@@ -302,7 +301,6 @@ export function Calendar({
         </div>
       )}
 
-      {notesOpen && <NotesOverlay onClose={() => setNotesOpen(false)} />}
     </div>
   );
 }
