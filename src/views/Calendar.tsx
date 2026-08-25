@@ -136,7 +136,7 @@ export function Calendar({
         else onExit();
         return;
       }
-      if (key === bindings["calendar"] || key === bindings["tasks"]) { onExit(); return; }
+      if (key === bindings["calendar"]) { onExit(); return; }
       if (key === bindings["month"]) { setShowMonth((v) => !v); return; }
       if (key === bindings["today"]) { goToToday(); return; }
 
@@ -184,6 +184,7 @@ export function Calendar({
     expandedId,
     onSelect,
     onCycle: (i: Item) => onCycle(i.id),
+    calendarAccounts,
   };
 
   const empty = flat.length === 0;
@@ -208,7 +209,7 @@ export function Calendar({
             title={`new event [${bindings["add"]}]`}
             onClick={() => setAdding(true)}
           >+</button>
-          <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
+          <button className="topbar-icon-btn" title={`settings [${bindings["settings"]}]`} onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
 

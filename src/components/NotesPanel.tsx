@@ -395,7 +395,8 @@ export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
       setFormatting(false);
       setPreviewing((v) => !v);
     }
-  }, [bindings, selected]);
+    else if (key === bindings["settings"]) onSettings();
+  }, [bindings, selected, onSettings]);
   useKeyboard(handleKey);
 
   return (
@@ -427,7 +428,7 @@ export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
             title="new note [⌘N]"
             onClick={createNote}
           >+</button>
-          <button className="topbar-icon-btn" title="settings" onClick={onSettings}>⚙</button>
+          <button className="topbar-icon-btn" title={`settings [${bindings["settings"]}]`} onClick={onSettings}>⚙</button>
 
           {browsing && (
             <div className="notes-browse-dropdown">

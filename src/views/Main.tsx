@@ -40,6 +40,7 @@ export function Main({
   const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showAllDone, setShowAllDone] = useState(false);
+  const [hideLater, setHideLater] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
@@ -172,7 +173,7 @@ export function Main({
             onClick={() => setAdding(true)}
           >+</button>
           <button className="topbar-icon-btn" title={`notes [${bindings["notes-view"]}]`} onClick={() => onNotes()}>✎</button>
-          <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
+          <button className="topbar-icon-btn" title={`settings [${bindings["settings"]}]`} onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
 
@@ -194,10 +195,15 @@ export function Main({
             group={group}
             label={group === "DONE" && showAllDone ? "DONE · all" : group}
             items={groups[group]}
+            calendarAccounts={calendarAccounts}
             selectedId={selected?.id ?? null}
             expandedId={expandedId}
             onSelect={selectRow}
             onCycle={(t) => onCycle(t.id)}
+            collapsed={group === "LATER" ? hideLater : undefined}
+            onToggleCollapsed={group === "LATER" ? () => setHideLater((v) => !v) : undefined}
+            onLabelClick={group === "DONE" ? () => setShowAllDone((v) => !v) : undefined}
+            labelTitle={group === "DONE" ? `${showAllDone ? "recent only" : "show all"} [${bindings["toggle-done"]}]` : undefined}
           />
         ))}
       </div>

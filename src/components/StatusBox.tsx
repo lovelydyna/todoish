@@ -41,7 +41,12 @@ export function StatusBox({ status, onCycle }: StatusBoxProps) {
           />
         </svg>
       )}
-      {variant === "progress" && <span className="statusbox-dash" />}
+      {variant === "progress" && (
+        <svg viewBox="0 0 14 14" aria-hidden="true">
+          <circle cx="7" cy="7" r="5.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M7 7 L7 1.75 A5.25 5.25 0 0 1 7 12.25 Z" fill="currentColor" />
+        </svg>
+      )}
     </button>
   );
 }

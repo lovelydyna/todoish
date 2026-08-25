@@ -1,22 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { timeRangeLabel, deadlineLabel, isDeadlinePassed } from "../lib/groupEvents";
+import { sourceTag } from "../lib/sourceTag";
 import { StatusBox } from "./StatusBox";
 
 interface EventRowProps {
   event: Item;
+  calendarAccounts: CalendarAccount[];
   selected: boolean;
   expanded: boolean;
   onClick: () => void;
   onCycle: () => void;
 }
 
-export function EventRow({ event, selected, expanded, onClick, onCycle }: EventRowProps) {
+export function EventRow({ event, calendarAccounts, selected, expanded, onClick, onCycle }: EventRowProps) {
   const time = timeRangeLabel(event);
   const deadline = deadlineLabel(event);
   const overdue = isDeadlinePassed(event);
 
   const fromCalendar = event.source === "google";
+  const tag = sourceTag(event, calendarAccounts);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -35,11 +38,8 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
         <span className="task-cursor">{selected ? "▶" : " "}</span>
         <StatusBox status={event.status} onCycle={onCycle} />
         <span className="event-time">{time || "—"}</span>
-        {/* Always rendered, so the names stay in one column whether or not a
-            row came from the calendar. */}
-        <span className="row-source" title={fromCalendar ? "from your notion calendar" : undefined}>
-          {fromCalendar ? "◇" : ""}
-        </span>
+        {/* Which database or calendar this row belongs to. */}
+        <span className="row-source-dot" style={{ background: tag.color }} title={tag.label} />
         <span className="event-name">{event.name}</span>
         {event.description && !expanded && (
           <span className="task-has-note" title="has a description">·</span>

@@ -246,14 +246,17 @@ input {
 .view-switch-btn {
   position: relative;
   z-index: 1;
-  min-width: 84px;
-  padding: 4px 18px;
-  font-size: 13px;
-  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 24px;
   color: var(--text-faint);
   border-radius: 999px;
   transition: color 200ms ease;
 }
+
+.view-switch-btn svg { width: 15px; height: 15px; display: block; }
 
 .view-switch-btn:hover { color: var(--text-dim); }
 
@@ -295,11 +298,46 @@ input {
   text-transform: uppercase;
 }
 
-.group-label--now   { color: var(--accent-now); }
-.group-label--next  { color: var(--accent-next); }
-.group-label--later { color: var(--accent-later); }
+.group-label--now       { color: var(--accent-now); }
+.group-label--this-week { color: var(--accent-next); }
+.group-label--next      { color: var(--accent-next); }
+.group-label--later     { color: var(--accent-later); }
 
 .group-label--done  { color: var(--text-faint); }
+
+.group-label--collapsible {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.group-label--collapsible:hover { color: var(--text-dim); }
+
+.group-label-caret {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 120ms ease;
+  transform: rotate(0deg);
+}
+.group-label-caret--open { transform: rotate(90deg); }
+
+.group-label-count {
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-faint);
+  font-size: 11px;
+}
 
 /* ─── Task row ───────────────────────────────────────────── */
 .task-row {
@@ -310,6 +348,13 @@ input {
 }
 
 .task-row:hover { background: rgba(var(--overlay-rgb), 0.04); }
+
+/* What needs attention soonest gets a quiet accent tint — a hint, not a
+   banner, so the list still reads as one list rather than blocks of color. */
+.task-row--now       { border-left-color: rgba(212, 149, 106, 0.5); background: rgba(212, 149, 106, 0.045); }
+.task-row--this-week { border-left-color: rgba(122, 191, 142, 0.4); background: rgba(122, 191, 142, 0.035); }
+.task-row--now:hover       { background: rgba(212, 149, 106, 0.08); }
+.task-row--this-week:hover { background: rgba(122, 191, 142, 0.06); }
 
 .task-row--selected {
   background: var(--selected-bg);
@@ -1856,16 +1901,11 @@ input {
 
 .statusbox:hover { border-color: var(--accent-blue); }
 
-/* Unchecked but started: an indeterminate dash, as in Notion's tri-state. */
+/* Unchecked but started: a half-filled ring, reading as "underway" without
+   borrowing the done checkmark's shape. */
 .statusbox--progress {
   border-color: var(--accent-blue);
-}
-
-.statusbox-dash {
-  width: 7px;
-  height: 1.5px;
-  border-radius: 1px;
-  background: var(--accent-blue);
+  color: var(--accent-blue);
 }
 
 .statusbox--done {
@@ -2022,19 +2062,20 @@ input {
 .schema-match--missing { color: var(--accent-red); }
 
 /* ─── Notion Calendar ────────────────────────────────────── */
-/* Events synced from the calendar sit in the same lists as Notion rows, so
-   they need a mark that reads at a glance without turning into a second
-   accent competing with the deadline colours. A dim glyph does it. */
-/* Sits in the gutter just left of the name. The name is flex:1, so a marker
-   placed after it would be shunted to the far edge and read as part of the
-   deadline hint instead of as a property of the row. */
-.row-source {
-  color: var(--accent-blue);
-  font-size: 11px;
-  opacity: 0.6;
+/* Rows from Notion and from every linked Google calendar sit in the same
+   list, so each gets a small dot in its own colour — Notion is one neutral
+   tone, each calendar its own deterministic hue — rather than a shared
+   glyph that only distinguished "calendar" from "not calendar".
+   Sits in the gutter just left of the name: the name is flex:1, so a marker
+   placed after it would be shunted to the far edge instead of reading as a
+   property of the row. */
+.row-source-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
   flex-shrink: 0;
-  margin-left: 2px;
-  width: 8px;
+  margin: 0 6px 0 2px;
 }
 
 .event-row--calendar .event-time { color: var(--accent-blue); opacity: 0.8; }

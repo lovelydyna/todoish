@@ -7,7 +7,6 @@ export type Action =
   | "delete"
   | "undo"
   | "toggle-done"
-  | "tasks"
   | "calendar"
   | "notes-view"
   | "month"
@@ -29,8 +28,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   "delete":       "delete",
   "undo":         "undo delete",
   "toggle-done":  "toggle done archive",
-  "tasks":        "tasks view",
-  "calendar":     "calendar view",
+  "calendar":     "switch tasks ⇄ calendar",
   "notes-view":   "notes view",
   "month":        "month view",
   "expand":       "expand description",
@@ -46,7 +44,7 @@ export const ACTION_LABELS: Record<Action, string> = {
 export const ACTION_SECTIONS: { label: string; actions: Action[] }[] = [
   { label: "navigation", actions: ["move-down", "move-up"] },
   { label: "tasks",      actions: ["add", "cycle-status", "edit", "delete", "undo"] },
-  { label: "view",       actions: ["toggle-done", "tasks", "calendar", "notes-view", "month", "today", "expand", "refresh"] },
+  { label: "view",       actions: ["toggle-done", "calendar", "notes-view", "month", "today", "expand", "refresh"] },
   { label: "app",        actions: ["settings", "help", "notes", "browse-notes", "notes-preview"] },
 ];
 
@@ -61,7 +59,6 @@ export const DEFAULTS: Bindings = {
   "delete":       "d",
   "undo":         "u",
   "toggle-done":  "D",
-  "tasks":        "t",
   "calendar":     "c",
   "notes-view":   "w",
   "month":        "m",
