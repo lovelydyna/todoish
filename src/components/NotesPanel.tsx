@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { NoteSummary } from "../types";
 import { WindowControls } from "./WindowControls";
+import { useKeyboard } from "../hooks/useKeyboard";
+import { useKeybindings } from "../hooks/useKeybindings";
 
 /** "3:14p" today, "Tue" this week, "Aug 12" further back — same grain as the
  *  rest of the app's date labels, just applied to a note's last-edit time. */
@@ -168,6 +170,7 @@ interface NotesPanelProps {
  * not a filing cabinet.
  */
 export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
+  const { bindings } = useKeybindings();
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -375,6 +378,14 @@ export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [createNote, onHome, browsing, selected]);
 
+  // The rebindable single-key layer — only live outside the title/body
+  // fields (useKeyboard ignores inputs and textareas), so it never fights
+  // with typing. ⌘O above covers the same action while a note is focused.
+  const handleKey = useCallback((key: string) => {
+    if (key === bindings["browse-notes"]) setBrowsing((v) => !v);
+  }, [bindings]);
+  useKeyboard(handleKey);
+
   return (
     <div className="main notes-view" tabIndex={-1}>
       <div className="topbar" data-tauri-drag-region>
@@ -395,7 +406,7 @@ export function NotesPanel({ onHome, onSettings }: NotesPanelProps) {
           <button
             type="button"
             className="topbar-icon-btn"
-            title="browse notes [⌘O]"
+            title={`browse notes [⌘O / ${bindings["browse-notes"]}]`}
             onClick={() => setBrowsing((v) => !v)}
           >☰</button>
           <button

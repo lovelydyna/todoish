@@ -16,7 +16,8 @@ export type Action =
   | "refresh"
   | "settings"
   | "help"
-  | "notes";
+  | "notes"
+  | "browse-notes";
 
 export const ACTION_LABELS: Record<Action, string> = {
   "move-down":    "move down",
@@ -37,13 +38,14 @@ export const ACTION_LABELS: Record<Action, string> = {
   "settings":     "settings",
   "help":         "help",
   "notes":        "quick notes",
+  "browse-notes": "browse notes",
 };
 
 export const ACTION_SECTIONS: { label: string; actions: Action[] }[] = [
   { label: "navigation", actions: ["move-down", "move-up"] },
   { label: "tasks",      actions: ["add", "cycle-status", "edit", "delete", "undo"] },
   { label: "view",       actions: ["toggle-done", "tasks", "calendar", "notes-view", "month", "today", "expand", "refresh"] },
-  { label: "app",        actions: ["settings", "help", "notes"] },
+  { label: "app",        actions: ["settings", "help", "notes", "browse-notes"] },
 ];
 
 export type Bindings = Record<Action, string>;
@@ -67,6 +69,7 @@ export const DEFAULTS: Bindings = {
   "settings":     ",",
   "help":         "?",
   "notes":        "q",
+  "browse-notes": "b",
 };
 
 const STORAGE_KEY = "todoish:keybindings";
