@@ -4,7 +4,11 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { playComplete } from "../lib/sounds";
 import { WindowControls } from "../components/WindowControls";
 import { KeybindingsEditor } from "../components/KeybindingsEditor";
+import { CalendarSettings } from "../components/CalendarSettings";
+import { HistoryPanel } from "../components/HistoryPanel";
+import { NotesPanel } from "../components/NotesPanel";
 import { FieldLabel } from "../components/InfoTip";
+import { Item } from "../types";
 import {
   Appearance,
   THEMES,
@@ -18,15 +22,20 @@ import {
 interface SetupProps {
   onComplete: () => void;
   onCancel?: () => void;
+  /** Called after the calendar link changes, so the item list stops showing
+   *  stale rows until the next 60s sync tick. */
+  onCalendarChanged?: () => void;
   initialApiKey?: string;
   initialDatabaseId?: string;
   initialTone?: string;
   initialPosition?: string;
-  initialAlwaysOnTop?: boolean;
   initialGlobalShortcut?: string;
   initialAppearance?: Partial<Appearance>;
   /** Which tab to open on. Lets `?` jump straight to the keybindings. */
   initialTab?: SettingsTab;
+  /** For the history tab, which lives in settings rather than as its own view. */
+  items?: Item[];
+  historyLoading?: boolean;
 }
 
 /** Eye toggle for the database id field. */
@@ -76,32 +85,41 @@ interface SchemaReport {
   missing: string[];
 }
 
-export type SettingsTab = "database" | "appearance" | "keybindings" | "general";
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: "general", label: "general" },
-  { id: "appearance", label: "appearance" },
-  { id: "database", label: "database" },
-  { id: "keybindings", label: "keys" },
+export type SettingsTab =
+  | "calendar"
+  | "appearance"
+  | "history"
+  | "notes"
+  | "keybindings"
+  | "general";
+const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "general", label: "general", icon: "⚙" },
+  { id: "appearance", label: "appearance", icon: "◐" },
+  { id: "calendar", label: "calendar", icon: "▦" },
+  { id: "history", label: "history", icon: "◴" },
+  { id: "notes", label: "notes", icon: "✎" },
+  { id: "keybindings", label: "keys", icon: "⌨" },
 ];
 
 export function Setup({
   onComplete,
   onCancel,
+  onCalendarChanged,
   initialApiKey = "",
   initialDatabaseId = "",
   initialTone = "bell",
   initialPosition = "",
-  initialAlwaysOnTop = false,
   initialGlobalShortcut = "CmdOrControl+Shift+T",
   initialAppearance = {},
   initialTab = "general",
+  items = [],
+  historyLoading = false,
 }: SetupProps) {
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [databaseId, setDatabaseId] = useState(initialDatabaseId);
   const [showDbId, setShowDbId] = useState(false);
   const [tone, setTone] = useState(initialTone);
   const [position, setPosition] = useState(initialPosition);
-  const [alwaysOnTop, setAlwaysOnTop] = useState(initialAlwaysOnTop);
   const [globalShortcut, setGlobalShortcut] = useState(initialGlobalShortcut);
   const [schemaReport, setSchemaReport] = useState<SchemaReport | null>(null);
   const [checking, setChecking] = useState(false);
@@ -147,13 +165,11 @@ export function Setup({
         databaseId: databaseId.trim(),
         completionTone: tone,
         startupPosition: position,
-        alwaysOnTop,
         globalShortcut: globalShortcut.trim(),
         theme: appearance.theme,
         colorMode: appearance.mode,
         windowOpacity: appearance.opacity,
       });
-      await invoke("set_always_on_top", { enabled: alwaysOnTop });
       if (isSettings) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -192,43 +208,59 @@ export function Setup({
     await (next ? enable() : disable()).catch(() => setAutostart(!next));
   };
 
-  return (
-    <div className="setup">
-      <div className="setup-titlebar">
-        <WindowControls />
-        <span className="brand setup-brand">todoish</span>
-        <div className="topbar-right" />
-      </div>
-      <div className="setup-header">
-        <span className="setup-subtitle">
-          {isSettings ? "settings" : "connect to notion"}
-        </span>
-        {isSettings && (
-          <button className="setup-back" onClick={onCancel}>
-            esc
-          </button>
-        )}
-      </div>
+  // The Thunderbird source-list look: in settings, the icon rail runs the
+  // full height of the panel, including alongside the titlebar row — it is
+  // not a row *below* the titlebar the way it is in the first-run flow,
+  // which has no rail to make room for.
+  const titlebar = (
+    <div className="setup-titlebar">
+      <WindowControls />
+      <span className="brand setup-brand">todoish</span>
+      <div className="topbar-right" />
+    </div>
+  );
 
-      {isSettings && (
-        <div className="settings-tabs" role="tablist">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              className={`settings-tab${tab === t.id ? " settings-tab--active" : ""}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+  return (
+    <div className={`setup${isSettings ? " setup--settings" : ""}`}>
+      {!isSettings && (
+        <>
+          {titlebar}
+          <div className="setup-header">
+            <span className="setup-subtitle">connect to notion</span>
+          </div>
+        </>
       )}
 
+      <div className={isSettings ? "setup-body" : undefined}>
+        {isSettings && (
+          <div className="settings-sidebar" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                title={t.label}
+                aria-label={t.label}
+                className={`settings-sidebar-btn${tab === t.id ? " settings-sidebar-btn--active" : ""}`}
+                onClick={() => setTab(t.id)}
+              >
+                <span className="settings-sidebar-icon" aria-hidden="true">{t.icon}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+      <div className={isSettings ? "setup-content" : undefined}>
+      {isSettings && titlebar}
+      {/* Notes is a two-pane list+editor, not a column of fields — it wants
+          the content area's full space rather than being squeezed into the
+          padded, single-column form the other tabs share. */}
+      {isSettings && tab === "notes" ? (
+        <NotesPanel />
+      ) : (
       <form onSubmit={handleSubmit} className="setup-form">
-        {showTab("database") && (
+        {showTab("calendar") && (
           <>
             <div className="field">
               <FieldLabel info="Notion developer portal → your connection → configuration → internal connection token. Not the personal access token — that one is user-scoped.">
@@ -247,7 +279,7 @@ export function Setup({
 
             <div className="field">
               <FieldLabel info="The id from your database url, or ··· → manage data sources → copy data source id. Either works — todoish resolves one to the other.">
-                database
+                notion database
               </FieldLabel>
               <div className="field-input-row">
                 <input
@@ -307,6 +339,12 @@ export function Setup({
               </div>
             )}
           </>
+        )}
+
+        {/* Only in settings: first run is about getting Notion working, and
+            the calendar is an addition to a working setup, not part of one. */}
+        {isSettings && showTab("calendar") && (
+          <CalendarSettings onChanged={onCalendarChanged} />
         )}
 
         {isSettings && showTab("appearance") && (
@@ -419,17 +457,6 @@ export function Setup({
               </button>
             </div>
 
-            <div className="field">
-              <label className="field-label">always on top</label>
-              <button
-                type="button"
-                className={`toggle-btn${alwaysOnTop ? " toggle-btn--on" : ""}`}
-                onClick={() => setAlwaysOnTop((v) => !v)}
-              >
-                {alwaysOnTop ? "on" : "off"}
-              </button>
-            </div>
-
             {autostart && (
               <div className="field">
                 <label className="field-label">startup position</label>
@@ -450,13 +477,26 @@ export function Setup({
           </>
         )}
 
+        {isSettings && showTab("history") && (
+          <HistoryPanel items={items} loading={historyLoading} />
+        )}
+
         {error && <div className="setup-error">{error}</div>}
         {saved && <div className="setup-saved">saved</div>}
 
-        <button className="setup-submit" type="submit" disabled={loading}>
-          {loading ? "saving…" : isSettings ? "save" : "connect"}
-        </button>
+        {/* History is a read-only log — nothing on that tab to save. The
+            calendar tab's Google account section persists through its own
+            commands as you go, but the Notion fields alongside it still need
+            the save button. */}
+        {!(isSettings && tab === "history") && (
+          <button className="setup-submit" type="submit" disabled={loading}>
+            {loading ? "saving…" : isSettings ? "save" : "connect"}
+          </button>
+        )}
       </form>
+      )}
+      </div>
+      </div>
     </div>
   );
 }

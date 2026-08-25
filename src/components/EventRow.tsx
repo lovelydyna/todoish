@@ -16,6 +16,8 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
   const deadline = deadlineLabel(event);
   const overdue = isDeadlinePassed(event);
 
+  const fromCalendar = event.source === "google";
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     invoke("open_in_notion", { itemId: event.id });
@@ -23,7 +25,9 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
 
   return (
     <div
-      className={`event-row ${selected ? "event-row--selected" : ""}`}
+      className={`event-row ${selected ? "event-row--selected" : ""}${
+        fromCalendar ? " event-row--calendar" : ""
+      }`}
       onClick={onClick}
       onContextMenu={handleContextMenu}
     >
@@ -31,6 +35,11 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
         <span className="task-cursor">{selected ? "▶" : " "}</span>
         <StatusBox status={event.status} onCycle={onCycle} />
         <span className="event-time">{time || "—"}</span>
+        {/* Always rendered, so the names stay in one column whether or not a
+            row came from the calendar. */}
+        <span className="row-source" title={fromCalendar ? "from your notion calendar" : undefined}>
+          {fromCalendar ? "◇" : ""}
+        </span>
         <span className="event-name">{event.name}</span>
         {event.description && !expanded && (
           <span className="task-has-note" title="has a description">·</span>

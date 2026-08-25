@@ -32,6 +32,14 @@ export function TaskRow({ item, selected, expanded, onClick, onCycle }: TaskRowP
       <div className="task-row-main">
         <span className="task-cursor">{selected ? "▶" : " "}</span>
         <StatusBox status={item.status} onCycle={onCycle} />
+        {/* Always rendered, so the titles stay in one column whether or not a
+            row came from the calendar. */}
+        <span
+          className="row-source"
+          title={item.source === "google" ? "from your notion calendar" : undefined}
+        >
+          {item.source === "google" ? "◇" : ""}
+        </span>
         <span className="task-title">{item.name}</span>
         {item.description && !expanded && (
           <span className="task-has-note" title="has a description">·</span>

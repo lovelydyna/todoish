@@ -1,5 +1,8 @@
 mod commands;
 mod config;
+mod gcal;
+mod merge;
+mod notes;
 mod notion;
 mod sync;
 
@@ -78,6 +81,7 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(ItemCache(Mutex::new(vec![])))
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
@@ -92,7 +96,17 @@ pub fn run() {
             commands::get_autostart,
             commands::set_autostart,
             commands::open_in_notion,
-            commands::set_always_on_top,
+            commands::calendar_accounts,
+            commands::connect_calendar,
+            commands::disconnect_calendar,
+            commands::set_default_calendar_account,
+            commands::list_calendars,
+            commands::save_calendar_selection,
+            commands::save_note,
+            commands::list_notes,
+            commands::read_note,
+            commands::update_note,
+            commands::delete_note,
             commands::quit_app,
         ])
         .setup(|app| {
@@ -120,11 +134,6 @@ pub fn run() {
             // Using direct ObjC call (same thread as setup = main thread, safe).
             // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
             if let Some(window) = app.get_webview_window("main") {
-                let always_on_top = config::load_config()
-                    .map(|c| c.always_on_top)
-                    .unwrap_or(false);
-                let _ = window.set_always_on_top(always_on_top);
-
                 #[cfg(target_os = "macos")]
                 {
                     use objc2::msg_send;

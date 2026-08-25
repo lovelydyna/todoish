@@ -33,7 +33,6 @@ let config: Config = {
   database_id: "demo-database",
   completion_tone: "bell",
   startup_position: "",
-  always_on_top: false,
   global_shortcut: "CmdOrControl+Shift+T",
   theme: "midnight",
   color_mode: "dark",
@@ -52,6 +51,10 @@ const item = (id: string, name: string, fields: Partial<Item> = {}): Item => ({
   end: null,
   deadline: null,
   description: null,
+  source: "notion",
+  calendar_id: null,
+  account_id: null,
+  url: null,
   created_time: null,
   last_edited_time: null,
   ...fields,
@@ -94,7 +97,104 @@ let items: Item[] = [
     status: "Done", deadline: day(-1),
     created_time: ago(120), last_edited_time: ago(3),
   }),
+
+  // Rows that came from linked Notion Calendar accounts rather than the
+  // database — two accounts, to exercise the multi-account picker.
+  item("g:acct-work:primary:c1", "supervisor 1:1", {
+    source: "google", calendar_id: "primary", account_id: "acct-work",
+    url: "https://calendar.google.com/event?eid=demo1",
+    start: day(0, "14:00"), end: day(0, "14:30"),
+  }),
+  item("g:acct-work:primary:c2", "MRI scan slot", {
+    source: "google", calendar_id: "primary", account_id: "acct-work",
+    url: "https://calendar.google.com/event?eid=demo2",
+    start: day(1, "11:00"), end: day(1, "13:00"),
+    description: "bring the participant consent forms",
+  }),
+  item("g:acct-work:primary:c3", "journal club", {
+    source: "google", calendar_id: "primary", account_id: "acct-work",
+    url: "https://calendar.google.com/event?eid=demo3",
+    start: day(2, "16:00"), end: day(2, "17:00"),
+  }),
+  item("g:acct-personal:primary:c4", "dentist", {
+    source: "google", calendar_id: "primary", account_id: "acct-personal",
+    url: "https://calendar.google.com/event?eid=demo4",
+    start: day(3, "09:30"), end: day(3, "10:15"),
+  }),
 ];
+
+/** The demo runs with two calendar accounts linked, so the merged list —
+ *  and the multi-account settings and picker — are what you see. */
+let accounts = [
+  {
+    id: "acct-work",
+    client_id: "demo.apps.googleusercontent.com",
+    has_client_secret: true,
+    account: "demo.work@ualberta.ca",
+    calendars: [{ id: "primary", name: "demo.work@ualberta.ca" }],
+    default: true,
+  },
+  {
+    id: "acct-personal",
+    client_id: "demo.apps.googleusercontent.com",
+    has_client_secret: true,
+    account: "demo.personal@gmail.com",
+    calendars: [{ id: "primary", name: "demo.personal@gmail.com" }],
+    default: false,
+  },
+];
+
+interface DemoCalendar {
+  id: string;
+  name: string;
+  primary: boolean;
+  writable: boolean;
+}
+
+const demoCalendarsByAccount: Record<string, DemoCalendar[]> = {
+  "acct-work": [
+    { id: "primary", name: "demo.work@ualberta.ca", primary: true, writable: true },
+    { id: "lab@group.calendar.google.com", name: "lab bookings", primary: false, writable: true },
+    { id: "dept@group.calendar.google.com", name: "department seminars", primary: false, writable: false },
+  ],
+  "acct-personal": [
+    { id: "primary", name: "demo.personal@gmail.com", primary: true, writable: true },
+  ],
+};
+
+interface DemoNote {
+  filename: string;
+  content: string;
+  /** Epoch ms — matches Date.now(), converted to seconds for list_notes to
+   *  mirror the backend's Unix-seconds NoteSummary.modified. */
+  modified: number;
+}
+
+let notes: DemoNote[] = [
+  {
+    filename: "idea-widget-for-weekly-review.md",
+    content: "idea: widget for weekly review\n\nsurface last week's Done items grouped by day, maybe with a streak count.",
+    modified: Date.now() - 2 * 60 * 60 * 1000,
+  },
+  {
+    filename: "grant-app-notes.md",
+    content: "grant app notes\n\n- budget justification needs the equipment quote from last month\n- ask supervisor about the timeline section",
+    modified: Date.now() - 26 * 60 * 60 * 1000,
+  },
+];
+
+/** Mirrors the backend's collision handling: a name already in use gets a
+ *  numeric suffix rather than overwriting. */
+function uniqueNoteFilename(name: string): string {
+  const base = name.trim().replace(/[/\\]/g, "-").slice(0, 120) || "untitled";
+  let filename = `${base}.md`;
+  let attempt = 2;
+  while (notes.some((n) => n.filename === filename)) {
+    filename = `${base}-${attempt}.md`;
+    attempt += 1;
+  }
+  return filename;
+}
 
 type Args = Record<string, any>;
 
@@ -109,7 +209,6 @@ const handlers: Record<string, (args: Args) => unknown> = {
       database_id: args.databaseId ?? config.database_id,
       completion_tone: args.completionTone ?? config.completion_tone,
       startup_position: args.startupPosition ?? config.startup_position,
-      always_on_top: args.alwaysOnTop ?? config.always_on_top,
       global_shortcut: args.globalShortcut ?? config.global_shortcut,
       theme: args.theme ?? config.theme,
       color_mode: args.colorMode ?? config.color_mode,
@@ -118,7 +217,7 @@ const handlers: Record<string, (args: Args) => unknown> = {
     return null;
   },
 
-  trigger_sync: () => items,
+  trigger_sync: () => ({ items, warning: null }),
   get_items: () => items,
 
   cycle_status: ({ itemId }) => {
@@ -130,11 +229,20 @@ const handlers: Record<string, (args: Args) => unknown> = {
     return found.status;
   },
   create_item: (args) => {
-    const created = item(`i${Date.now()}`, args.name, {
+    const toCalendar = args.source === "google";
+    const accountId = args.accountId ?? accounts[0]?.id ?? "acct-work";
+    const calendarId = args.calendarId ?? "primary";
+    const id = toCalendar
+      ? `g:${accountId}:${calendarId}:c${Date.now()}`
+      : `i${Date.now()}`;
+    const created = item(id, args.name, {
       start: args.start ?? null,
       end: args.end ?? null,
       deadline: args.deadline ?? null,
       description: args.description ?? null,
+      source: toCalendar ? "google" : "notion",
+      calendar_id: toCalendar ? calendarId : null,
+      account_id: toCalendar ? accountId : null,
       created_time: new Date().toISOString(),
     });
     items = [created, ...items];
@@ -152,10 +260,71 @@ const handlers: Record<string, (args: Args) => unknown> = {
   },
 
   open_in_notion: () => null,
+
+  calendar_accounts: () => accounts,
+  list_calendars: ({ accountId }) => demoCalendarsByAccount[accountId] ?? [],
+  connect_calendar: ({ clientId }) => {
+    const id = `acct-demo${Date.now()}`;
+    accounts = [
+      ...accounts,
+      {
+        id,
+        client_id: clientId,
+        has_client_secret: true,
+        account: `demo${accounts.length + 1}@example.com`,
+        calendars: [],
+        default: accounts.length === 0,
+      },
+    ];
+    demoCalendarsByAccount[id] = [
+      { id: "primary", name: `demo${accounts.length}@example.com`, primary: true, writable: true },
+    ];
+    return accounts;
+  },
+  disconnect_calendar: ({ accountId }) => {
+    const wasDefault = accounts.find((a) => a.id === accountId)?.default ?? false;
+    accounts = accounts.filter((a) => a.id !== accountId);
+    if (wasDefault && accounts[0]) accounts[0].default = true;
+    delete demoCalendarsByAccount[accountId];
+    items = items.filter((i) => i.account_id !== accountId);
+    return null;
+  },
+  set_default_calendar_account: ({ accountId }) => {
+    accounts = accounts.map((a) => ({ ...a, default: a.id === accountId }));
+    return null;
+  },
+  save_calendar_selection: ({ accountId, calendars }) => {
+    accounts = accounts.map((a) => (a.id === accountId ? { ...a, calendars } : a));
+    return null;
+  },
   get_autostart: () => false,
   set_autostart: () => null,
-  set_always_on_top: () => null,
   quit_app: () => null,
+
+  save_note: ({ name, content }) => {
+    const filename = uniqueNoteFilename(name);
+    notes.push({ filename, content: content ?? "", modified: Date.now() });
+    return filename;
+  },
+  list_notes: () =>
+    [...notes]
+      .sort((a, b) => b.modified - a.modified)
+      .map((n) => ({
+        filename: n.filename,
+        title: n.filename.replace(/\.md$/, ""),
+        modified: Math.floor(n.modified / 1000),
+        preview: n.content.split("\n").find((l) => l.trim())?.trim().slice(0, 140) ?? "",
+      })),
+  read_note: ({ filename }) => notes.find((n) => n.filename === filename)?.content ?? "",
+  update_note: ({ filename, content }) => {
+    const note = notes.find((n) => n.filename === filename);
+    if (note) { note.content = content; note.modified = Date.now(); }
+    return null;
+  },
+  delete_note: ({ filename }) => {
+    notes = notes.filter((n) => n.filename !== filename);
+    return null;
+  },
 };
 
 export function installTauriMock(): void {

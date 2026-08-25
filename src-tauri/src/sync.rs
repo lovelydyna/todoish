@@ -1,6 +1,6 @@
 use crate::commands::ItemCache;
 use crate::config::load_config;
-use crate::notion;
+use crate::merge;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -10,11 +10,14 @@ pub async fn start_sync_loop(app: AppHandle) {
 
         let Some(config) = load_config() else { continue };
 
-        match notion::fetch_items(&config.notion_api_key, &config.database_id).await {
-            Ok(items) => {
+        match merge::fetch_all(&config).await {
+            Ok(result) => {
                 let cache = app.state::<ItemCache>();
-                *cache.0.lock().expect("item cache poisoned") = items.clone();
-                let _ = app.emit("items-updated", items);
+                *cache.0.lock().expect("item cache poisoned") = result.items.clone();
+                let _ = app.emit("items-updated", result.items);
+                // A calendar that failed while Notion succeeded is worth
+                // saying, but it must not read as the whole sync being down.
+                let _ = app.emit("calendar-warning", result.warning);
             }
             Err(e) => {
                 let _ = app.emit("sync-error", e);

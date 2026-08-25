@@ -7,14 +7,15 @@ export type Action =
   | "delete"
   | "undo"
   | "toggle-done"
+  | "tasks"
   | "calendar"
   | "month"
   | "expand"
-  | "history"
   | "today"
   | "refresh"
   | "settings"
-  | "help";
+  | "help"
+  | "notes";
 
 export const ACTION_LABELS: Record<Action, string> = {
   "move-down":    "move down",
@@ -25,21 +26,22 @@ export const ACTION_LABELS: Record<Action, string> = {
   "delete":       "delete",
   "undo":         "undo delete",
   "toggle-done":  "toggle done archive",
-  "calendar":     "calendar",
+  "tasks":        "tasks view",
+  "calendar":     "calendar view",
   "month":        "month view",
   "expand":       "expand description",
-  "history":      "history",
   "today":        "jump to today",
   "refresh":      "refresh",
   "settings":     "settings",
   "help":         "help",
+  "notes":        "quick notes",
 };
 
 export const ACTION_SECTIONS: { label: string; actions: Action[] }[] = [
   { label: "navigation", actions: ["move-down", "move-up"] },
   { label: "tasks",      actions: ["add", "cycle-status", "edit", "delete", "undo"] },
-  { label: "view",       actions: ["toggle-done", "calendar", "month", "today", "expand", "history", "refresh"] },
-  { label: "app",        actions: ["settings", "help"] },
+  { label: "view",       actions: ["toggle-done", "tasks", "calendar", "month", "today", "expand", "refresh"] },
+  { label: "app",        actions: ["settings", "help", "notes"] },
 ];
 
 export type Bindings = Record<Action, string>;
@@ -53,14 +55,15 @@ export const DEFAULTS: Bindings = {
   "delete":       "d",
   "undo":         "u",
   "toggle-done":  "D",
+  "tasks":        "t",
   "calendar":     "c",
   "month":        "m",
   "expand":       "x",
-  "history":      "h",
   "today":        "T",
   "refresh":      "r",
   "settings":     ",",
   "help":         "?",
+  "notes":        "q",
 };
 
 const STORAGE_KEY = "todoish:keybindings";

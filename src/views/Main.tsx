@@ -1,11 +1,12 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
 import { groupTasks, flattenGroups, TASK_GROUP_ORDER } from "../lib/groupTasks";
 import { TaskGroup } from "../components/TaskGroup";
 import { ItemEdit } from "../components/ItemEdit";
+import { NotesOverlay } from "../components/NotesOverlay";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
 import { SettingsTab } from "./Setup";
@@ -14,6 +15,9 @@ interface MainProps {
   items: Item[];
   loading: boolean;
   error: string | null;
+  /** A calendar sync that failed while the tasks loaded fine. */
+  calendarWarning: string | null;
+  calendarAccounts: CalendarAccount[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -21,7 +25,6 @@ interface MainProps {
   onRefresh: () => void;
   onSettings: (tab?: SettingsTab) => void;
   onCalendar: () => void;
-  onHistory: () => void;
 }
 
 interface PendingDelete {
@@ -30,9 +33,9 @@ interface PendingDelete {
 }
 
 export function Main({
-  items, loading, error,
+  items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
-  onSettings, onCalendar, onHistory,
+  onSettings, onCalendar,
 }: MainProps) {
   const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -41,6 +44,7 @@ export function Main({
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const pendingDeleteRef = useRef<PendingDelete | null>(null);
 
@@ -104,7 +108,7 @@ export function Main({
 
   const handleKey = useCallback(
     (key: string, e: KeyboardEvent) => {
-      if (editorOpen) return;
+      if (editorOpen || notesOpen) return;
       if (e.metaKey && key === "r") { e.preventDefault(); onRefresh(); return; }
 
       if (confirmDelete) {
@@ -128,16 +132,16 @@ export function Main({
       else if (key === bindings["expand"] && selected)
         setExpandedId((id) => (id === selected.id ? null : selected.id));
       else if (key === bindings["calendar"]) onCalendar();
-      else if (key === bindings["history"]) onHistory();
       else if (key === bindings["today"]) {
         // "Today" in a list is the top of NOW — what is due now or overdue.
         setSelectedIndex(0);
         setExpandedId(null);
       }
       else if (key === bindings["settings"]) onSettings();
+      else if (key === bindings["notes"]) { e.preventDefault(); setNotesOpen(true); }
     },
-    [editorOpen, confirmDelete, selected, flat, bindings,
-     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar, onHistory,
+    [editorOpen, notesOpen, confirmDelete, selected, flat, bindings,
+     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar,
      onRefresh, showAllDone]
   );
 
@@ -167,16 +171,12 @@ export function Main({
             title={`new item [${bindings["add"]}]`}
             onClick={() => setAdding(true)}
           >+</button>
-          <button
-            className="topbar-icon-btn"
-            title={`history [${bindings["history"]}]`}
-            onClick={onHistory}
-          >◴</button>
           <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {calendarWarning && <div className="calendar-warning">{calendarWarning}</div>}
 
       {!loading && activeItems === 0 && groups.DONE.length === 0 && !error && (
         <div className="empty">
@@ -222,11 +222,14 @@ export function Main({
         <div className="overlay" onClick={closeEditor}>
           <ItemEdit
             item={editing ?? undefined}
+            calendarAccounts={calendarAccounts}
             onSubmit={handleSubmit}
             onClose={closeEditor}
           />
         </div>
       )}
+
+      {notesOpen && <NotesOverlay onClose={() => setNotesOpen(false)} />}
 
     </div>
   );

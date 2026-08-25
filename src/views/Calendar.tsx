@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -7,6 +7,7 @@ import { groupEvents, upcomingByDay, daySections } from "../lib/groupEvents";
 import { addMonths, addWeeks, dayHeading } from "../lib/calendarGrid";
 import { EventGroup } from "../components/EventGroup";
 import { ItemEdit } from "../components/ItemEdit";
+import { NotesOverlay } from "../components/NotesOverlay";
 import { WeekStrip } from "../components/WeekStrip";
 import { MonthGrid } from "../components/MonthGrid";
 import { WindowControls } from "../components/WindowControls";
@@ -19,6 +20,9 @@ interface CalendarProps {
   items: Item[];
   loading: boolean;
   error: string | null;
+  /** A calendar sync that failed while the tasks loaded fine. */
+  calendarWarning: string | null;
+  calendarAccounts: CalendarAccount[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -29,7 +33,7 @@ interface CalendarProps {
 }
 
 export function Calendar({
-  items, loading, error,
+  items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
   onExit, onSettings,
 }: CalendarProps) {
@@ -46,6 +50,7 @@ export function Calendar({
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const groups = useMemo(() => groupEvents(items), [items]);
   const upcomingDays = useMemo(() => upcomingByDay(items), [items]);
@@ -115,7 +120,7 @@ export function Calendar({
 
   const handleKey = useCallback(
     (key: string, e: KeyboardEvent) => {
-      if (editingOverlay) return;
+      if (editingOverlay || notesOpen) return;
       if (e.metaKey && key === "r") { e.preventDefault(); onRefresh(); return; }
 
       if (confirmDelete) {
@@ -131,7 +136,7 @@ export function Calendar({
         else onExit();
         return;
       }
-      if (key === bindings["calendar"]) { onExit(); return; }
+      if (key === bindings["calendar"] || key === bindings["tasks"]) { onExit(); return; }
       if (key === bindings["month"]) { setShowMonth((v) => !v); return; }
       if (key === bindings["today"]) { goToToday(); return; }
 
@@ -161,8 +166,9 @@ export function Calendar({
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
+      else if (key === bindings["notes"]) { e.preventDefault(); setNotesOpen(true); }
     },
-    [editingOverlay, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
+    [editingOverlay, notesOpen, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
      onCycle, onDelete, onRefresh, onExit, onSettings, pickDay, changeWeek, goToToday]
   );
 
@@ -202,16 +208,12 @@ export function Calendar({
             title={`new event [${bindings["add"]}]`}
             onClick={() => setAdding(true)}
           >+</button>
-          <button
-            className={`topbar-icon-btn${showMonth ? " topbar-icon-btn--on" : ""}`}
-            title="month view"
-            onClick={() => setShowMonth((v) => !v)}
-          >▦</button>
           <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {calendarWarning && <div className="calendar-warning">{calendarWarning}</div>}
 
       {showMonth ? (
         <MonthGrid
@@ -220,6 +222,7 @@ export function Calendar({
           selectedDay={selectedDay}
           onSelectDay={pickDay}
           onChangeMonth={(delta) => setMonth((m) => addMonths(m, delta))}
+          onToggleMonth={() => setShowMonth((v) => !v)}
         />
       ) : (
         <WeekStrip
@@ -228,6 +231,7 @@ export function Calendar({
           selectedDay={selectedDay}
           onSelectDay={pickDay}
           onChangeWeek={changeWeek}
+          onToggleMonth={() => setShowMonth((v) => !v)}
         />
       )}
 
@@ -287,11 +291,17 @@ export function Calendar({
         <div className="overlay" onClick={() => { setAdding(false); setEditing(null); }}>
           <ItemEdit
             item={editing ?? undefined}
+            calendarAccounts={calendarAccounts}
+            /* Something added from the calendar is, by default, a calendar
+               event — that is what this view is for. */
+            preferCalendar
             onSubmit={handleSubmit}
             onClose={() => { setAdding(false); setEditing(null); }}
           />
         </div>
       )}
+
+      {notesOpen && <NotesOverlay onClose={() => setNotesOpen(false)} />}
     </div>
   );
 }
