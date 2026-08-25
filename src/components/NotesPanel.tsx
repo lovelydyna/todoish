@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { NoteSummary } from "../types";
 import { WindowControls } from "./WindowControls";
+import { IconTag } from "./IconTag";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
 
@@ -409,26 +410,27 @@ export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
         <div className="topbar-right" ref={browseRef} style={{ position: "relative" }}>
           {status === "saving" && <span className="notes-save-hint">saving…</span>}
           {selected && (
+            <IconTag label={previewing ? "edit" : "preview"} keyHint={`⌘E / ${bindings["notes-preview"]}`}>
+              <button
+                type="button"
+                className={`topbar-icon-btn${previewing ? " topbar-icon-btn--on" : ""}`}
+                onClick={() => { setFormatting(false); setPreviewing((v) => !v); }}
+              >{previewing ? "✎" : "◎"}</button>
+            </IconTag>
+          )}
+          <IconTag label="browse notes" keyHint={`⌘O / ${bindings["browse-notes"]}`}>
             <button
               type="button"
-              className={`topbar-icon-btn${previewing ? " topbar-icon-btn--on" : ""}`}
-              title={previewing ? `edit [⌘E / ${bindings["notes-preview"]}]` : `preview [⌘E / ${bindings["notes-preview"]}]`}
-              onClick={() => { setFormatting(false); setPreviewing((v) => !v); }}
-            >{previewing ? "✎" : "◎"}</button>
-          )}
-          <button
-            type="button"
-            className="topbar-icon-btn"
-            title={`browse notes [⌘O / ${bindings["browse-notes"]}]`}
-            onClick={() => setBrowsing((v) => !v)}
-          >☰</button>
-          <button
-            type="button"
-            className="topbar-icon-btn"
-            title="new note [⌘N]"
-            onClick={createNote}
-          >+</button>
-          <button className="topbar-icon-btn" title={`settings [${bindings["settings"]}]`} onClick={onSettings}>⚙</button>
+              className="topbar-icon-btn"
+              onClick={() => setBrowsing((v) => !v)}
+            >☰</button>
+          </IconTag>
+          <IconTag label="new note" keyHint="⌘N">
+            <button type="button" className="topbar-icon-btn" onClick={createNote}>+</button>
+          </IconTag>
+          <IconTag label="settings" keyHint={bindings["settings"]}>
+            <button className="topbar-icon-btn" onClick={onSettings}>⚙</button>
+          </IconTag>
 
           {browsing && (
             <div className="notes-browse-dropdown">

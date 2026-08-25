@@ -179,6 +179,72 @@ input {
   background: rgba(124, 156, 191, 0.18);
 }
 
+/* ─── Icon hover tags ────────────────────────────────────── */
+/* A small bubble naming a button and its key, in the app's own style
+   rather than the OS tooltip — shows up fast and reads the same everywhere. */
+.icon-tag {
+  position: relative;
+  display: inline-flex;
+  -webkit-app-region: no-drag;
+}
+
+.icon-tag-bubble {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: rgba(var(--tint-rgb), 0.96);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 100ms ease, transform 100ms ease;
+  transition-delay: 0s;
+  z-index: 200;
+}
+
+.icon-tag:hover .icon-tag-bubble,
+.icon-tag:focus-within .icon-tag-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: 350ms;
+}
+
+/* The window is narrow enough that a centered bubble on the rightmost
+   topbar icons would run off the edge — anchor those to their button's
+   right edge instead, growing left into the room that's actually there. */
+.topbar-right .icon-tag-bubble {
+  left: auto;
+  right: 0;
+  transform: translateY(-4px);
+}
+.topbar-right .icon-tag:hover .icon-tag-bubble,
+.topbar-right .icon-tag:focus-within .icon-tag-bubble {
+  transform: translateY(0);
+}
+
+.icon-tag-key {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(var(--overlay-rgb), 0.14);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-tag-bubble { transition: none; }
+}
+
 /* Setup titlebar — same grid layout as main topbar */
 .setup-titlebar {
   display: grid;

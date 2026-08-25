@@ -8,6 +8,7 @@ import { TaskGroup } from "../components/TaskGroup";
 import { ItemEdit } from "../components/ItemEdit";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
+import { IconTag } from "../components/IconTag";
 import { SettingsTab } from "./Setup";
 
 interface MainProps {
@@ -167,13 +168,15 @@ export function Main({
         </div>
         <div className="topbar-right">
           {loading && <span className="syncing topbar-icon">⟳</span>}
-          <button
-            className="topbar-icon-btn"
-            title={`new item [${bindings["add"]}]`}
-            onClick={() => setAdding(true)}
-          >+</button>
-          <button className="topbar-icon-btn" title={`notes [${bindings["notes-view"]}]`} onClick={() => onNotes()}>✎</button>
-          <button className="topbar-icon-btn" title={`settings [${bindings["settings"]}]`} onClick={() => onSettings()}>⚙</button>
+          <IconTag label="new item" keyHint={bindings["add"]}>
+            <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
+          </IconTag>
+          <IconTag label="notes" keyHint={bindings["notes-view"]}>
+            <button className="topbar-icon-btn" onClick={() => onNotes()}>✎</button>
+          </IconTag>
+          <IconTag label="settings" keyHint={bindings["settings"]}>
+            <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
+          </IconTag>
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import { WeekStrip } from "../components/WeekStrip";
 import { MonthGrid } from "../components/MonthGrid";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
+import { IconTag } from "../components/IconTag";
 import { SettingsTab } from "./Setup";
 
 /** How far forward the list runs once you pick a day on a grid. */
@@ -204,12 +205,12 @@ export function Calendar({
         </div>
         <div className="topbar-right">
           {loading && <span className="syncing topbar-icon">⟳</span>}
-          <button
-            className="topbar-icon-btn"
-            title={`new event [${bindings["add"]}]`}
-            onClick={() => setAdding(true)}
-          >+</button>
-          <button className="topbar-icon-btn" title={`settings [${bindings["settings"]}]`} onClick={() => onSettings()}>⚙</button>
+          <IconTag label="new event" keyHint={bindings["add"]}>
+            <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
+          </IconTag>
+          <IconTag label="settings" keyHint={bindings["settings"]}>
+            <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
+          </IconTag>
         </div>
       </div>
 

@@ -1,3 +1,5 @@
+import { IconTag } from "./IconTag";
+
 export type AppView = "tasks" | "calendar";
 
 interface ViewSwitchProps {
@@ -36,24 +38,24 @@ const VIEWS: { id: AppView; label: string; Icon: () => JSX.Element }[] = [
  */
 export function ViewSwitch({ active, onSelect, toggleKey }: ViewSwitchProps) {
   return (
-    <div className="view-switch" role="tablist" title={`[${toggleKey}] switch view`}>
+    <div className="view-switch" role="tablist">
       <span
         className="view-switch-thumb"
         style={{ transform: active === "calendar" ? "translateX(100%)" : "none" }}
       />
       {VIEWS.map(({ id, label, Icon }) => (
-        <button
-          key={id}
-          type="button"
-          role="tab"
-          aria-selected={active === id}
-          aria-label={label}
-          title={`${label} [${toggleKey}]`}
-          className={`view-switch-btn${active === id ? " view-switch-btn--active" : ""}`}
-          onClick={() => onSelect(id)}
-        >
-          <Icon />
-        </button>
+        <IconTag key={id} label={label} keyHint={toggleKey}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={active === id}
+            aria-label={label}
+            className={`view-switch-btn${active === id ? " view-switch-btn--active" : ""}`}
+            onClick={() => onSelect(id)}
+          >
+            <Icon />
+          </button>
+        </IconTag>
       ))}
     </div>
   );
