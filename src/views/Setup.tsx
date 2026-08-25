@@ -6,7 +6,6 @@ import { WindowControls } from "../components/WindowControls";
 import { KeybindingsEditor } from "../components/KeybindingsEditor";
 import { CalendarSettings } from "../components/CalendarSettings";
 import { HistoryPanel } from "../components/HistoryPanel";
-import { NotesPanel } from "../components/NotesPanel";
 import { FieldLabel } from "../components/InfoTip";
 import { Item } from "../types";
 import {
@@ -89,7 +88,6 @@ export type SettingsTab =
   | "calendar"
   | "appearance"
   | "history"
-  | "notes"
   | "keybindings"
   | "general";
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
@@ -97,7 +95,6 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "appearance", label: "appearance", icon: "◐" },
   { id: "calendar", label: "calendar", icon: "▦" },
   { id: "history", label: "history", icon: "◴" },
-  { id: "notes", label: "notes", icon: "✎" },
   { id: "keybindings", label: "keys", icon: "⌨" },
 ];
 
@@ -253,12 +250,6 @@ export function Setup({
 
       <div className={isSettings ? "setup-content" : undefined}>
       {isSettings && titlebar}
-      {/* Notes is a two-pane list+editor, not a column of fields — it wants
-          the content area's full space rather than being squeezed into the
-          padded, single-column form the other tabs share. */}
-      {isSettings && tab === "notes" ? (
-        <NotesPanel />
-      ) : (
       <form onSubmit={handleSubmit} className="setup-form">
         {showTab("calendar") && (
           <>
@@ -494,7 +485,6 @@ export function Setup({
           </button>
         )}
       </form>
-      )}
       </div>
       </div>
     </div>

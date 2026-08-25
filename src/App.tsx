@@ -4,12 +4,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Setup, SettingsTab } from "./views/Setup";
 import { Main } from "./views/Main";
 import { Calendar } from "./views/Calendar";
+import { Notes } from "./views/Notes";
 import { Config, CalendarAccount } from "./types";
 import { useItems } from "./hooks/useItems";
 import { applyAppearance, watchSystemScheme } from "./lib/theme";
 import { initAudio } from "./lib/sounds";
 
-type View = "loading" | "setup" | "main" | "settings" | "calendar";
+type View = "loading" | "setup" | "main" | "settings" | "calendar" | "notes";
 
 /** Pulls the appearance fields out of a stored config. */
 function appearanceOf(config: Config | null) {
@@ -28,8 +29,6 @@ export default function App() {
   // there is no choice to make.
   const [calendarAccounts, setCalendarAccounts] = useState<CalendarAccount[]>([]);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
-  // Which way the next view should slide in. Tasks sits left of calendar.
-  const [slide, setSlide] = useState<"left" | "right" | null>(null);
 
   // One database, one fetch — both the list and the calendar render this.
   const {
@@ -105,11 +104,7 @@ export default function App() {
     setView("main");
   };
 
-  /** Switches view and remembers the direction, so the entry animation matches. */
-  const goTo = (next: View, direction: "left" | "right" | null = null) => {
-    setSlide(direction);
-    setView(next);
-  };
+  const goTo = (next: View) => setView(next);
 
   const renderView = () => {
     if (view === "loading") {
@@ -153,10 +148,13 @@ export default function App() {
           onUpdate={updateItem}
           onDelete={deleteItem}
           onRefresh={refresh}
-          onExit={() => goTo("main", "right")}
+          onExit={() => goTo("main")}
           onSettings={openSettings}
         />
       );
+    }
+    if (view === "notes") {
+      return <Notes onTasks={() => goTo("main")} onSettings={openSettings} />;
     }
     return (
       <Main
@@ -171,7 +169,8 @@ export default function App() {
         onDelete={deleteItem}
         onRefresh={refresh}
         onSettings={openSettings}
-        onCalendar={() => goTo("calendar", "left")}
+        onCalendar={() => goTo("calendar")}
+        onNotes={() => goTo("notes")}
       />
     );
   };
@@ -187,10 +186,7 @@ export default function App() {
   return (
     <div style={{ height: "100%" }} onMouseDown={handleDrag}>
       <div className="blur-layer" />
-      {/* Keyed on the view so React remounts it and the CSS animation replays. */}
-      <div key={view} className={`view-slide${slide ? ` view-slide--${slide}` : ""}`}>
-        {renderView()}
-      </div>
+      {renderView()}
     </div>
   );
 }

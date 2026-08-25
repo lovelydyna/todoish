@@ -12,6 +12,7 @@ import { WeekStrip } from "../components/WeekStrip";
 import { MonthGrid } from "../components/MonthGrid";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
+import { SettingsTab } from "./Setup";
 
 /** How far forward the list runs once you pick a day on a grid. */
 const DAYS_FROM_SELECTED = 14;
@@ -29,7 +30,7 @@ interface CalendarProps {
   onDelete: (itemId: string) => void;
   onRefresh: () => void;
   onExit: () => void;
-  onSettings: () => void;
+  onSettings: (tab?: SettingsTab) => void;
 }
 
 export function Calendar({

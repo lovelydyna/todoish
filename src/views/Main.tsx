@@ -25,6 +25,7 @@ interface MainProps {
   onRefresh: () => void;
   onSettings: (tab?: SettingsTab) => void;
   onCalendar: () => void;
+  onNotes: () => void;
 }
 
 interface PendingDelete {
@@ -35,7 +36,7 @@ interface PendingDelete {
 export function Main({
   items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
-  onSettings, onCalendar,
+  onSettings, onCalendar, onNotes,
 }: MainProps) {
   const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -132,6 +133,7 @@ export function Main({
       else if (key === bindings["expand"] && selected)
         setExpandedId((id) => (id === selected.id ? null : selected.id));
       else if (key === bindings["calendar"]) onCalendar();
+      else if (key === bindings["notes-view"]) onNotes();
       else if (key === bindings["today"]) {
         // "Today" in a list is the top of NOW — what is due now or overdue.
         setSelectedIndex(0);
@@ -141,7 +143,7 @@ export function Main({
       else if (key === bindings["notes"]) { e.preventDefault(); setNotesOpen(true); }
     },
     [editorOpen, notesOpen, confirmDelete, selected, flat, bindings,
-     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar,
+     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar, onNotes,
      onRefresh, showAllDone]
   );
 
@@ -171,6 +173,7 @@ export function Main({
             title={`new item [${bindings["add"]}]`}
             onClick={() => setAdding(true)}
           >+</button>
+          <button className="topbar-icon-btn" title={`notes [${bindings["notes-view"]}]`} onClick={onNotes}>✎</button>
           <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
         </div>
       </div>
