@@ -8,13 +8,16 @@ export type Action =
   | "undo"
   | "toggle-done"
   | "calendar"
+  | "notes-view"
   | "month"
   | "expand"
-  | "history"
   | "today"
   | "refresh"
   | "settings"
-  | "help";
+  | "help"
+  | "notes"
+  | "browse-notes"
+  | "notes-preview";
 
 export const ACTION_LABELS: Record<Action, string> = {
   "move-down":    "move down",
@@ -25,21 +28,24 @@ export const ACTION_LABELS: Record<Action, string> = {
   "delete":       "delete",
   "undo":         "undo delete",
   "toggle-done":  "toggle done archive",
-  "calendar":     "calendar",
+  "calendar":     "switch tasks ⇄ calendar",
+  "notes-view":   "notes view",
   "month":        "month view",
   "expand":       "expand description",
-  "history":      "history",
   "today":        "jump to today",
   "refresh":      "refresh",
   "settings":     "settings",
   "help":         "help",
+  "notes":        "new note",
+  "browse-notes": "browse notes",
+  "notes-preview": "toggle note preview",
 };
 
 export const ACTION_SECTIONS: { label: string; actions: Action[] }[] = [
   { label: "navigation", actions: ["move-down", "move-up"] },
   { label: "tasks",      actions: ["add", "cycle-status", "edit", "delete", "undo"] },
-  { label: "view",       actions: ["toggle-done", "calendar", "month", "today", "expand", "history", "refresh"] },
-  { label: "app",        actions: ["settings", "help"] },
+  { label: "view",       actions: ["toggle-done", "calendar", "notes-view", "month", "today", "expand", "refresh"] },
+  { label: "app",        actions: ["settings", "help", "notes", "browse-notes", "notes-preview"] },
 ];
 
 export type Bindings = Record<Action, string>;
@@ -54,13 +60,16 @@ export const DEFAULTS: Bindings = {
   "undo":         "u",
   "toggle-done":  "D",
   "calendar":     "c",
+  "notes-view":   "w",
   "month":        "m",
   "expand":       "x",
-  "history":      "h",
   "today":        "T",
   "refresh":      "r",
   "settings":     ",",
   "help":         "?",
+  "notes":        "q",
+  "browse-notes": "b",
+  "notes-preview": "p",
 };
 
 const STORAGE_KEY = "todoish:keybindings";

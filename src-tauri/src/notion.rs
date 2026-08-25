@@ -408,6 +408,14 @@ where
     Err(last_err)
 }
 
+/// Where a row came from, and therefore where writes to it go back to.
+pub const SOURCE_NOTION: &str = "notion";
+pub const SOURCE_GOOGLE: &str = "google";
+
+fn source_notion() -> String {
+    SOURCE_NOTION.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
@@ -422,6 +430,24 @@ pub struct Item {
     /// Page-level Notion timestamps, used by the activity view.
     pub created_time: Option<String>,
     pub last_edited_time: Option<String>,
+
+    /// `"notion"` or `"google"`. Everything that writes routes on this, so a
+    /// row always goes back to the service it came from.
+    #[serde(default = "source_notion")]
+    pub source: String,
+    /// Which Google calendar holds this event. `None` for Notion rows.
+    #[serde(default)]
+    pub calendar_id: Option<String>,
+    /// Which linked Google account this event belongs to. `None` for Notion
+    /// rows. Two accounts can each have a calendar literally called
+    /// "primary" with independently-numbered events, so writes must route on
+    /// the account, not just the calendar id.
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Where "open in…" should go. `None` for Notion rows, whose URL is
+    /// derived from the page id.
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -504,6 +530,10 @@ fn page_to_item(page: NotionPage, schema: &Schema) -> Option<Item> {
         description: by_name(&schema.description, extract_rich_text),
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
+        source: source_notion(),
+        calendar_id: None,
+        account_id: None,
+        url: None,
     })
 }
 
@@ -661,6 +691,10 @@ pub async fn create_item(
         description: description.filter(|s| !s.is_empty()).map(str::to_string),
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
+        source: source_notion(),
+        calendar_id: None,
+        account_id: None,
+        url: None,
     })
 }
 

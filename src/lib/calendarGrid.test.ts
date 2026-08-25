@@ -24,6 +24,10 @@ const base: Item = {
   description: null,
   created_time: null,
   last_edited_time: null,
+  source: "notion",
+  calendar_id: null,
+  account_id: null,
+  url: null,
 };
 
 // A Monday, so weekday maths is easy to reason about.

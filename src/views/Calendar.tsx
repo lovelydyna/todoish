@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -11,6 +11,8 @@ import { WeekStrip } from "../components/WeekStrip";
 import { MonthGrid } from "../components/MonthGrid";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
+import { IconTag } from "../components/IconTag";
+import { SettingsTab } from "./Setup";
 
 /** How far forward the list runs once you pick a day on a grid. */
 const DAYS_FROM_SELECTED = 14;
@@ -19,19 +21,23 @@ interface CalendarProps {
   items: Item[];
   loading: boolean;
   error: string | null;
+  /** A calendar sync that failed while the tasks loaded fine. */
+  calendarWarning: string | null;
+  calendarAccounts: CalendarAccount[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
   onDelete: (itemId: string) => void;
   onRefresh: () => void;
   onExit: () => void;
-  onSettings: () => void;
+  onSettings: (tab?: SettingsTab) => void;
+  onNotes: (startNew?: boolean) => void;
 }
 
 export function Calendar({
-  items, loading, error,
+  items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
-  onExit, onSettings,
+  onExit, onSettings, onNotes,
 }: CalendarProps) {
   const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -161,9 +167,11 @@ export function Calendar({
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
+      else if (key === bindings["notes-view"]) onNotes();
+      else if (key === bindings["notes"]) { e.preventDefault(); onNotes(true); }
     },
     [editingOverlay, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
-     onCycle, onDelete, onRefresh, onExit, onSettings, pickDay, changeWeek, goToToday]
+     onCycle, onDelete, onRefresh, onExit, onSettings, onNotes, pickDay, changeWeek, goToToday]
   );
 
   useKeyboard(handleKey);
@@ -178,6 +186,7 @@ export function Calendar({
     expandedId,
     onSelect,
     onCycle: (i: Item) => onCycle(i.id),
+    calendarAccounts,
   };
 
   const empty = flat.length === 0;
@@ -197,21 +206,20 @@ export function Calendar({
         </div>
         <div className="topbar-right">
           {loading && <span className="syncing topbar-icon">⟳</span>}
-          <button
-            className="topbar-icon-btn"
-            title={`new event [${bindings["add"]}]`}
-            onClick={() => setAdding(true)}
-          >+</button>
-          <button
-            className={`topbar-icon-btn${showMonth ? " topbar-icon-btn--on" : ""}`}
-            title="month view"
-            onClick={() => setShowMonth((v) => !v)}
-          >▦</button>
-          <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
+          <IconTag label="new event" keyHint={bindings["add"]}>
+            <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
+          </IconTag>
+          <IconTag label="notes" keyHint={bindings["notes-view"]}>
+            <button className="topbar-icon-btn" onClick={() => onNotes()}>✎</button>
+          </IconTag>
+          <IconTag label="settings" keyHint={bindings["settings"]}>
+            <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
+          </IconTag>
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {calendarWarning && <div className="calendar-warning">{calendarWarning}</div>}
 
       {showMonth ? (
         <MonthGrid
@@ -220,6 +228,7 @@ export function Calendar({
           selectedDay={selectedDay}
           onSelectDay={pickDay}
           onChangeMonth={(delta) => setMonth((m) => addMonths(m, delta))}
+          onToggleMonth={() => setShowMonth((v) => !v)}
         />
       ) : (
         <WeekStrip
@@ -228,6 +237,7 @@ export function Calendar({
           selectedDay={selectedDay}
           onSelectDay={pickDay}
           onChangeWeek={changeWeek}
+          onToggleMonth={() => setShowMonth((v) => !v)}
         />
       )}
 
@@ -287,11 +297,16 @@ export function Calendar({
         <div className="overlay" onClick={() => { setAdding(false); setEditing(null); }}>
           <ItemEdit
             item={editing ?? undefined}
+            calendarAccounts={calendarAccounts}
+            /* Something added from the calendar is, by default, a calendar
+               event — that is what this view is for. */
+            preferCalendar
             onSubmit={handleSubmit}
             onClose={() => { setAdding(false); setEditing(null); }}
           />
         </div>
       )}
+
     </div>
   );
 }

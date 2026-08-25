@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -8,12 +8,16 @@ import { TaskGroup } from "../components/TaskGroup";
 import { ItemEdit } from "../components/ItemEdit";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
+import { IconTag } from "../components/IconTag";
 import { SettingsTab } from "./Setup";
 
 interface MainProps {
   items: Item[];
   loading: boolean;
   error: string | null;
+  /** A calendar sync that failed while the tasks loaded fine. */
+  calendarWarning: string | null;
+  calendarAccounts: CalendarAccount[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -21,7 +25,7 @@ interface MainProps {
   onRefresh: () => void;
   onSettings: (tab?: SettingsTab) => void;
   onCalendar: () => void;
-  onHistory: () => void;
+  onNotes: (startNew?: boolean) => void;
 }
 
 interface PendingDelete {
@@ -30,13 +34,14 @@ interface PendingDelete {
 }
 
 export function Main({
-  items, loading, error,
+  items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
-  onSettings, onCalendar, onHistory,
+  onSettings, onCalendar, onNotes,
 }: MainProps) {
   const { bindings } = useKeybindings();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showAllDone, setShowAllDone] = useState(false);
+  const [hideLater, setHideLater] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
@@ -128,16 +133,17 @@ export function Main({
       else if (key === bindings["expand"] && selected)
         setExpandedId((id) => (id === selected.id ? null : selected.id));
       else if (key === bindings["calendar"]) onCalendar();
-      else if (key === bindings["history"]) onHistory();
+      else if (key === bindings["notes-view"]) onNotes();
       else if (key === bindings["today"]) {
         // "Today" in a list is the top of NOW — what is due now or overdue.
         setSelectedIndex(0);
         setExpandedId(null);
       }
       else if (key === bindings["settings"]) onSettings();
+      else if (key === bindings["notes"]) { e.preventDefault(); onNotes(true); }
     },
     [editorOpen, confirmDelete, selected, flat, bindings,
-     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar, onHistory,
+     onCycle, startPendingDelete, undoDelete, onSettings, onCalendar, onNotes,
      onRefresh, showAllDone]
   );
 
@@ -162,21 +168,20 @@ export function Main({
         </div>
         <div className="topbar-right">
           {loading && <span className="syncing topbar-icon">⟳</span>}
-          <button
-            className="topbar-icon-btn"
-            title={`new item [${bindings["add"]}]`}
-            onClick={() => setAdding(true)}
-          >+</button>
-          <button
-            className="topbar-icon-btn"
-            title={`history [${bindings["history"]}]`}
-            onClick={onHistory}
-          >◴</button>
-          <button className="topbar-icon-btn" title="settings" onClick={() => onSettings()}>⚙</button>
+          <IconTag label="new item" keyHint={bindings["add"]}>
+            <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
+          </IconTag>
+          <IconTag label="notes" keyHint={bindings["notes-view"]}>
+            <button className="topbar-icon-btn" onClick={() => onNotes()}>✎</button>
+          </IconTag>
+          <IconTag label="settings" keyHint={bindings["settings"]}>
+            <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
+          </IconTag>
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {calendarWarning && <div className="calendar-warning">{calendarWarning}</div>}
 
       {!loading && activeItems === 0 && groups.DONE.length === 0 && !error && (
         <div className="empty">
@@ -193,10 +198,15 @@ export function Main({
             group={group}
             label={group === "DONE" && showAllDone ? "DONE · all" : group}
             items={groups[group]}
+            calendarAccounts={calendarAccounts}
             selectedId={selected?.id ?? null}
             expandedId={expandedId}
             onSelect={selectRow}
             onCycle={(t) => onCycle(t.id)}
+            collapsed={group === "LATER" ? hideLater : undefined}
+            onToggleCollapsed={group === "LATER" ? () => setHideLater((v) => !v) : undefined}
+            onLabelClick={group === "DONE" ? () => setShowAllDone((v) => !v) : undefined}
+            labelTitle={group === "DONE" ? `${showAllDone ? "recent only" : "show all"} [${bindings["toggle-done"]}]` : undefined}
           />
         ))}
       </div>
@@ -222,6 +232,7 @@ export function Main({
         <div className="overlay" onClick={closeEditor}>
           <ItemEdit
             item={editing ?? undefined}
+            calendarAccounts={calendarAccounts}
             onSubmit={handleSubmit}
             onClose={closeEditor}
           />

@@ -57,8 +57,23 @@ export function groupTasks(
   };
 
   const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const startOfToday = startOfDay(now);
 
   for (const item of items) {
+    // A Notion task whose deadline has already passed drops off the list
+    // entirely rather than sitting in NOW as overdue — it's still in Notion,
+    // todoish just stops carrying it once its own day is gone. Google
+    // Calendar events keep the old overdue-stays-visible behavior: a missed
+    // meeting isn't something you "still owe" the way a deadline is.
+    if (
+      item.source === "notion" &&
+      item.status !== "Done" &&
+      item.deadline &&
+      parseDueDate(item.deadline) < startOfToday
+    ) {
+      continue;
+    }
+
     if (item.status === "Done") {
       // Hide done items older than 24h unless archive view is on
       if (!showAllDone && item.last_edited_time && new Date(item.last_edited_time) < cutoff) {

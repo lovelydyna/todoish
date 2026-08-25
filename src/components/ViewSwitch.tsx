@@ -1,3 +1,5 @@
+import { IconTag } from "./IconTag";
+
 export type AppView = "tasks" | "calendar";
 
 interface ViewSwitchProps {
@@ -7,9 +9,23 @@ interface ViewSwitchProps {
   toggleKey: string;
 }
 
-const VIEWS: { id: AppView; label: string }[] = [
-  { id: "tasks", label: "tasks" },
-  { id: "calendar", label: "calendar" },
+const TasksIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4" />
+    <path d="M5 8.2 7 10.2 11 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const CalendarIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.4" />
+    <path d="M2 6.5h12M5 1.5v3M11 1.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
+
+const VIEWS: { id: AppView; label: string; Icon: () => JSX.Element }[] = [
+  { id: "tasks", label: "tasks", Icon: TasksIcon },
+  { id: "calendar", label: "calendar", Icon: CalendarIcon },
 ];
 
 /**
@@ -22,22 +38,24 @@ const VIEWS: { id: AppView; label: string }[] = [
  */
 export function ViewSwitch({ active, onSelect, toggleKey }: ViewSwitchProps) {
   return (
-    <div className="view-switch" role="tablist" title={`[${toggleKey}] switch view`}>
+    <div className="view-switch" role="tablist">
       <span
         className="view-switch-thumb"
         style={{ transform: active === "calendar" ? "translateX(100%)" : "none" }}
       />
-      {VIEWS.map((v) => (
-        <button
-          key={v.id}
-          type="button"
-          role="tab"
-          aria-selected={active === v.id}
-          className={`view-switch-btn${active === v.id ? " view-switch-btn--active" : ""}`}
-          onClick={() => onSelect(v.id)}
-        >
-          {v.label}
-        </button>
+      {VIEWS.map(({ id, label, Icon }) => (
+        <IconTag key={id} label={label} keyHint={toggleKey}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={active === id}
+            aria-label={label}
+            className={`view-switch-btn${active === id ? " view-switch-btn--active" : ""}`}
+            onClick={() => onSelect(id)}
+          >
+            <Icon />
+          </button>
+        </IconTag>
       ))}
     </div>
   );

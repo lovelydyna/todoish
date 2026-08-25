@@ -16,6 +16,8 @@ interface WeekStripProps {
   selectedDay: Date | null;
   onSelectDay: (date: Date | null) => void;
   onChangeWeek: (delta: number) => void;
+  /** Switches to the month grid — the date range doubles as that control. */
+  onToggleMonth: () => void;
   today?: Date;
 }
 
@@ -29,6 +31,7 @@ export function WeekStrip({
   selectedDay,
   onSelectDay,
   onChangeWeek,
+  onToggleMonth,
   today = new Date(),
 }: WeekStripProps) {
   const days = weekDays(week);
@@ -38,10 +41,17 @@ export function WeekStrip({
   return (
     <div className="week-strip">
       <div className="week-header">
-        <button type="button" className="month-nav" title="previous week"
+        <button type="button" className="month-nav" title="previous week [←]"
           onClick={() => onChangeWeek(-1)}>‹</button>
         <span className="week-title">
-          {weekRangeHeading(days, today)}
+          <button
+            type="button"
+            className="week-title-btn"
+            title="show month [m]"
+            onClick={onToggleMonth}
+          >
+            {weekRangeHeading(days, today)}
+          </button>
           {!isCurrentWeek && (
             <button
               type="button"
@@ -53,7 +63,7 @@ export function WeekStrip({
             </button>
           )}
         </span>
-        <button type="button" className="month-nav" title="next week"
+        <button type="button" className="month-nav" title="next week [→]"
           onClick={() => onChangeWeek(1)}>›</button>
       </div>
 

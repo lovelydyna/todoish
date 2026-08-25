@@ -16,6 +16,8 @@ interface MonthGridProps {
   selectedDay: Date | null;
   onSelectDay: (date: Date | null) => void;
   onChangeMonth: (delta: number) => void;
+  /** Switches back to the week strip — the month title doubles as that control. */
+  onToggleMonth: () => void;
   today?: Date;
 }
 
@@ -29,6 +31,7 @@ export function MonthGrid({
   selectedDay,
   onSelectDay,
   onChangeMonth,
+  onToggleMonth,
   today = new Date(),
 }: MonthGridProps) {
   const weeks = monthGrid(month);
@@ -37,10 +40,19 @@ export function MonthGrid({
   return (
     <div className="month-grid">
       <div className="month-header">
-        <button type="button" className="month-nav" title="previous month"
+        <button type="button" className="month-nav" title="previous month [←]"
           onClick={() => onChangeMonth(-1)}>‹</button>
-        <span className="month-title">{monthHeading(month)}</span>
-        <button type="button" className="month-nav" title="next month"
+        <span className="month-title">
+          <button
+            type="button"
+            className="month-title-btn"
+            title="back to week [m]"
+            onClick={onToggleMonth}
+          >
+            {monthHeading(month)}
+          </button>
+        </span>
+        <button type="button" className="month-nav" title="next month [→]"
           onClick={() => onChangeMonth(1)}>›</button>
       </div>
 
