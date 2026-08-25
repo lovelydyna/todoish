@@ -167,6 +167,7 @@ export function Calendar({
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
+      else if (key === bindings["notes-view"]) onNotes();
       else if (key === bindings["notes"]) { e.preventDefault(); onNotes(true); }
     },
     [editingOverlay, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
@@ -207,6 +208,9 @@ export function Calendar({
           {loading && <span className="syncing topbar-icon">⟳</span>}
           <IconTag label="new event" keyHint={bindings["add"]}>
             <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
+          </IconTag>
+          <IconTag label="notes" keyHint={bindings["notes-view"]}>
+            <button className="topbar-icon-btn" onClick={() => onNotes()}>✎</button>
           </IconTag>
           <IconTag label="settings" keyHint={bindings["settings"]}>
             <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
