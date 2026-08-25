@@ -40,7 +40,7 @@ export function MonthGrid({
   return (
     <div className="month-grid">
       <div className="month-header">
-        <button type="button" className="month-nav" title="previous month"
+        <button type="button" className="month-nav" title="previous month [←]"
           onClick={() => onChangeMonth(-1)}>‹</button>
         <span className="month-title">
           <button
@@ -52,7 +52,7 @@ export function MonthGrid({
             {monthHeading(month)}
           </button>
         </span>
-        <button type="button" className="month-nav" title="next month"
+        <button type="button" className="month-nav" title="next month [→]"
           onClick={() => onChangeMonth(1)}>›</button>
       </div>
 

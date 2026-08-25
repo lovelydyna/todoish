@@ -4,6 +4,7 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { playComplete } from "../lib/sounds";
 import { WindowControls } from "../components/WindowControls";
 import { KeybindingsEditor } from "../components/KeybindingsEditor";
+import { useKeybindings } from "../hooks/useKeybindings";
 import { CalendarSettings } from "../components/CalendarSettings";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { FieldLabel } from "../components/InfoTip";
@@ -112,6 +113,7 @@ export function Setup({
   items = [],
   historyLoading = false,
 }: SetupProps) {
+  const { bindings } = useKeybindings();
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [databaseId, setDatabaseId] = useState(initialDatabaseId);
   const [showDbId, setShowDbId] = useState(false);
@@ -237,7 +239,7 @@ export function Setup({
                 type="button"
                 role="tab"
                 aria-selected={tab === t.id}
-                title={t.label}
+                title={t.id === "keybindings" ? `${t.label} [${bindings["help"]}]` : t.label}
                 aria-label={t.label}
                 className={`settings-sidebar-btn${tab === t.id ? " settings-sidebar-btn--active" : ""}`}
                 onClick={() => setTab(t.id)}

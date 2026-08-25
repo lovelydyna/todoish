@@ -41,7 +41,7 @@ export function WeekStrip({
   return (
     <div className="week-strip">
       <div className="week-header">
-        <button type="button" className="month-nav" title="previous week"
+        <button type="button" className="month-nav" title="previous week [←]"
           onClick={() => onChangeWeek(-1)}>‹</button>
         <span className="week-title">
           <button
@@ -63,7 +63,7 @@ export function WeekStrip({
             </button>
           )}
         </span>
-        <button type="button" className="month-nav" title="next week"
+        <button type="button" className="month-nav" title="next week [→]"
           onClick={() => onChangeWeek(1)}>›</button>
       </div>
 
