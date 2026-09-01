@@ -22,6 +22,7 @@ const base: Item = {
   created_time: null,
   last_edited_time: null,
   source: "notion",
+  data_source_id: null,
   calendar_id: null,
   account_id: null,
   url: null,

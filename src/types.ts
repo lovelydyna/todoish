@@ -1,6 +1,5 @@
-/** Which service a row came from, and where writes to it go back to.
- *  "ics" rows have nowhere to write back to — see IcsCalendar. */
-export type Source = "notion" | "google" | "ics";
+/** Which service a row came from, and where writes to it go back to. */
+export type Source = "notion" | "google";
 
 /**
  * One row of the merged list, serving both views.
@@ -26,6 +25,9 @@ export interface Item {
   created_time: string | null;
   last_edited_time: string | null;
   source: Source;
+  /** Which Notion database (data source) this row lives in. Null for Google
+   *  rows. More than one database can be shared with the integration. */
+  data_source_id: string | null;
   /** Which Google calendar holds this event. Null for Notion rows. */
   calendar_id: string | null;
   /** Which linked Google account this event belongs to. Null for Notion rows. */
@@ -76,14 +78,6 @@ export interface CalendarInfo {
   writable: boolean;
 }
 
-/** One read-only calendar imported from an .ics feed URL. The URL itself
- *  never crosses into the frontend — same treatment as a Google account's
- *  client secret. Mirrors commands::IcsCalendarStatus. */
-export interface IcsCalendarStatus {
-  id: string;
-  name: string;
-}
-
 /** One saved note, for the notes tab in settings. Mirrors notes::NoteSummary. */
 export interface NoteSummary {
   filename: string;
@@ -95,7 +89,6 @@ export interface NoteSummary {
 
 export interface Config {
   notion_api_key: string;
-  database_id: string;
   completion_tone: string;
   startup_position: string;
   global_shortcut: string;

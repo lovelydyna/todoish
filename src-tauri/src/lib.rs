@@ -2,7 +2,6 @@ mod commands;
 mod config;
 mod gcal;
 mod http;
-mod ics;
 mod merge;
 mod notes;
 mod notion;
@@ -88,7 +87,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::save_config_cmd,
-            commands::describe_schema,
+            commands::describe_schemas,
             commands::get_items,
             commands::trigger_sync,
             commands::cycle_status,
@@ -104,9 +103,6 @@ pub fn run() {
             commands::set_default_calendar_account,
             commands::list_calendars,
             commands::save_calendar_selection,
-            commands::ics_calendars,
-            commands::add_ics_calendar,
-            commands::remove_ics_calendar,
             commands::save_note,
             commands::list_notes,
             commands::read_note,

@@ -1,4 +1,4 @@
-import { CalendarAccount, IcsCalendarStatus, Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 
 export interface SourceTag {
   label: string;
@@ -15,21 +15,11 @@ function hashHue(s: string): number {
 
 /** Which database or calendar a row belongs to, for the small dot next to
  *  its title — Notion tasks all share one neutral tone; each Google
- *  calendar (or imported .ics calendar) gets its own hue so rows from
- *  different calendars stay visually distinct in a merged list. */
-export function sourceTag(
-  item: Item,
-  accounts: CalendarAccount[],
-  icsCalendars: IcsCalendarStatus[] = []
-): SourceTag {
+ *  calendar gets its own hue so rows from different calendars (or
+ *  different linked accounts) stay visually distinct in a merged list. */
+export function sourceTag(item: Item, accounts: CalendarAccount[]): SourceTag {
   if (item.source === "notion") {
     return { label: "Notion", color: "var(--text-faint)" };
-  }
-  if (item.source === "ics") {
-    const calendar = icsCalendars.find((c) => c.id === item.calendar_id);
-    const label = calendar?.name || "calendar";
-    const hue = hashHue(`ics:${item.calendar_id ?? ""}`);
-    return { label, color: `hsl(${hue}, 55%, 62%)` };
   }
   const account = accounts.find((a) => a.id === item.account_id);
   const calendar = account?.calendars.find((c) => c.id === item.calendar_id);

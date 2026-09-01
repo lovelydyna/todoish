@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { CalendarAccount, IcsCalendarStatus, Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { timeRangeLabel, deadlineLabel, isDeadlinePassed } from "../lib/groupEvents";
 import { sourceTag } from "../lib/sourceTag";
 import { StatusBox } from "./StatusBox";
@@ -7,25 +7,22 @@ import { StatusBox } from "./StatusBox";
 interface EventRowProps {
   event: Item;
   calendarAccounts: CalendarAccount[];
-  icsCalendars: IcsCalendarStatus[];
   selected: boolean;
   expanded: boolean;
   onClick: () => void;
   onCycle: () => void;
 }
 
-export function EventRow({ event, calendarAccounts, icsCalendars, selected, expanded, onClick, onCycle }: EventRowProps) {
+export function EventRow({ event, calendarAccounts, selected, expanded, onClick, onCycle }: EventRowProps) {
   const time = timeRangeLabel(event);
   const deadline = deadlineLabel(event);
   const overdue = isDeadlinePassed(event);
 
-  const fromCalendar = event.source === "google" || event.source === "ics";
-  const readOnly = event.source === "ics";
-  const tag = sourceTag(event, calendarAccounts, icsCalendars);
+  const fromCalendar = event.source === "google";
+  const tag = sourceTag(event, calendarAccounts);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (readOnly) return;
     invoke("open_in_notion", { itemId: event.id });
   };
 
@@ -39,7 +36,7 @@ export function EventRow({ event, calendarAccounts, icsCalendars, selected, expa
     >
       <div className="event-row-main">
         <span className="task-cursor">{selected ? "▶" : " "}</span>
-        <StatusBox status={event.status} onCycle={onCycle} readOnly={readOnly} />
+        <StatusBox status={event.status} onCycle={onCycle} />
         <span className="event-time">{time || "—"}</span>
         {/* Which database or calendar this row belongs to. */}
         <span className="row-source-dot" style={{ background: tag.color }} title={tag.label} />

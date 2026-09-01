@@ -8,7 +8,6 @@
 
 use crate::config::{Config, GoogleAccount};
 use crate::gcal;
-use crate::ics;
 use crate::notion::{self, Item, SOURCE_GOOGLE};
 
 /// What one sync produced.
@@ -47,6 +46,7 @@ pub fn to_item(event: gcal::Event, account_id: &str) -> Item {
         created_time: event.created_time,
         last_edited_time: event.last_edited_time,
         source: SOURCE_GOOGLE.to_string(),
+        data_source_id: None,
         calendar_id: Some(event.calendar_id),
         account_id: Some(account_id.to_string()),
         url: event.url,
@@ -84,12 +84,10 @@ pub fn find_account<'a>(config: &'a Config, account_id: &str) -> Result<&'a Goog
         })
 }
 
-/// Notion first, then every linked Google account, then every imported .ics
-/// calendar. Notion is required; everything else is best-effort and reported
-/// independently, so one dead feed or revoked grant never hides events from
-/// the sources that are still fine.
+/// Notion first, then every linked Google account. Notion is required; each
+/// Google account is best-effort and reported independently.
 pub async fn fetch_all(config: &Config) -> Result<SyncResult, String> {
-    let mut items = notion::fetch_items(&config.notion_api_key, &config.database_id).await?;
+    let mut items = notion::fetch_items(&config.notion_api_key).await?;
     let mut warnings = Vec::new();
 
     for account in &config.google_accounts {
@@ -103,13 +101,6 @@ pub async fn fetch_all(config: &Config) -> Result<SyncResult, String> {
                 };
                 warnings.push(format!("{who}: {e}"));
             }
-        }
-    }
-
-    for calendar in &config.ics_calendars {
-        match ics::fetch_events(&calendar.url, &calendar.id).await {
-            Ok(events) => items.extend(events),
-            Err(e) => warnings.push(format!("{}: {e}", calendar.name)),
         }
     }
 
@@ -196,6 +187,6 @@ mod tests {
     }
 
     fn test_config() -> Config {
-        toml::from_str("notion_api_key = \"\"\ndatabase_id = \"\"\n").unwrap()
+        toml::from_str("notion_api_key = \"\"\n").unwrap()
     }
 }

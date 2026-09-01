@@ -1,7 +1,7 @@
-use crate::config::{load_config, new_account_id, save_config, Config, GoogleAccount, IcsCalendar, SyncedCalendar};
+use crate::config::{load_config, new_account_id, save_config, Config, GoogleAccount, SyncedCalendar};
 use crate::gcal;
 use crate::merge::{self, SyncResult};
-use crate::notion::{self, Item, SOURCE_GOOGLE, SOURCE_ICS};
+use crate::notion::{self, Item, SOURCE_GOOGLE};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -30,7 +30,6 @@ pub struct ItemCache(pub Mutex<Vec<Item>>);
 pub async fn get_config() -> Option<Config> {
     load_config().map(|mut c| {
         c.google_accounts.clear();
-        c.ics_calendars.clear();
         c
     })
 }
@@ -39,7 +38,6 @@ pub async fn get_config() -> Option<Config> {
 #[allow(clippy::too_many_arguments)]
 pub async fn save_config_cmd(
     api_key: String,
-    database_id: String,
     completion_tone: String,
     startup_position: String,
     global_shortcut: String,
@@ -49,14 +47,11 @@ pub async fn save_config_cmd(
 ) -> Result<(), String> {
     notion::forget_sources();
     // The calendar link is not on this form. Reading the stored config back
-    // and carrying those fields over keeps saving an unrelated setting from
-    // signing the user out of Google or dropping imported .ics calendars.
-    let existing = load_config();
-    let google_accounts = existing.as_ref().map(|c| c.google_accounts.clone()).unwrap_or_default();
-    let ics_calendars = existing.map(|c| c.ics_calendars).unwrap_or_default();
+    // and carrying it over keeps saving an unrelated setting from signing
+    // the user out of Google.
+    let google_accounts = load_config().map(|c| c.google_accounts).unwrap_or_default();
     save_config(&Config {
         notion_api_key: api_key,
-        database_id,
         completion_tone,
         startup_position,
         global_shortcut,
@@ -64,7 +59,6 @@ pub async fn save_config_cmd(
         color_mode,
         window_opacity,
         google_accounts,
-        ics_calendars,
         ..Default::default()
     })
 }
@@ -90,13 +84,11 @@ pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), S
     }
 }
 
-/// Checks a database and reports which property the app matched to each role.
+/// Checks every database shared with the integration and reports which
+/// property each one matched to each role.
 #[tauri::command]
-pub async fn describe_schema(
-    api_key: String,
-    database_id: String,
-) -> Result<notion::SchemaReport, String> {
-    notion::describe_schema(&api_key, &database_id).await
+pub async fn describe_schemas(api_key: String) -> Result<Vec<notion::SchemaReport>, String> {
+    notion::describe_schemas(&api_key).await
 }
 
 #[tauri::command]
@@ -117,9 +109,6 @@ pub async fn trigger_sync(cache: State<'_, ItemCache>) -> Result<SyncResult, Str
 #[tauri::command]
 pub async fn cycle_status(item_id: String, cache: State<'_, ItemCache>) -> Result<String, String> {
     let item = cached(&cache, &item_id)?;
-    if item.source == SOURCE_ICS {
-        return Err("This calendar is read-only — imported from an iCal link.".into());
-    }
 
     let next = match item.status.as_str() {
         "Todo" => "In Progress",
@@ -133,8 +122,11 @@ pub async fn cycle_status(item_id: String, cache: State<'_, ItemCache>) -> Resul
         let account = merge::find_account(&config, &account_id)?;
         gcal::set_event_status(account, &calendar_id, &event_id, next).await?;
     } else {
-        notion::set_item_status(&config.notion_api_key, &config.database_id, &item_id, next)
-            .await?;
+        let data_source_id = item
+            .data_source_id
+            .as_deref()
+            .ok_or("This item has no database — try refreshing.")?;
+        notion::set_item_status(&config.notion_api_key, data_source_id, &item_id, next).await?;
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -197,7 +189,6 @@ pub async fn create_item(
     } else {
         notion::create_item(
             &config.notion_api_key,
-            &config.database_id,
             &name,
             start.as_deref(),
             end.as_deref(),
@@ -227,9 +218,6 @@ pub async fn update_item_cmd(
 ) -> Result<(), String> {
     let config = load_config().ok_or("No config")?;
     let item = cached(&cache, &item_id)?;
-    if item.source == SOURCE_ICS {
-        return Err("This calendar is read-only — imported from an iCal link.".into());
-    }
 
     if item.source == SOURCE_GOOGLE {
         let (account_id, calendar_id, event_id) = merge::google_ids(&item)?;
@@ -247,9 +235,13 @@ pub async fn update_item_cmd(
         )
         .await?;
     } else {
+        let data_source_id = item
+            .data_source_id
+            .as_deref()
+            .ok_or("This item has no database — try refreshing.")?;
         notion::update_item(
             &config.notion_api_key,
-            &config.database_id,
+            data_source_id,
             &item_id,
             &name,
             start.as_deref(),
@@ -277,9 +269,6 @@ pub async fn update_item_cmd(
 pub async fn delete_item(item_id: String, cache: State<'_, ItemCache>) -> Result<(), String> {
     let config = load_config().ok_or("No config")?;
     let item = cached(&cache, &item_id)?;
-    if item.source == SOURCE_ICS {
-        return Err("This calendar is read-only — imported from an iCal link.".into());
-    }
 
     if item.source == SOURCE_GOOGLE {
         let (account_id, calendar_id, event_id) = merge::google_ids(&item)?;
@@ -482,82 +471,4 @@ pub async fn update_note(filename: String, content: String) -> Result<(), String
 #[tauri::command]
 pub async fn delete_note(filename: String) -> Result<(), String> {
     crate::notes::delete_note(&filename)
-}
-
-// ---------------------------------------------------------------------------
-// Read-only calendars (.ics feed URLs)
-// ---------------------------------------------------------------------------
-
-/// What settings shows for one imported .ics calendar. The feed URL is
-/// Google's "secret address" — never sent back to the frontend, the same way
-/// a Google account's client secret and refresh token stay backend-only.
-#[derive(serde::Serialize)]
-pub struct IcsCalendarStatus {
-    pub id: String,
-    pub name: String,
-}
-
-impl From<&IcsCalendar> for IcsCalendarStatus {
-    fn from(c: &IcsCalendar) -> Self {
-        IcsCalendarStatus { id: c.id.clone(), name: c.name.clone() }
-    }
-}
-
-#[tauri::command]
-pub async fn ics_calendars() -> Vec<IcsCalendarStatus> {
-    load_config()
-        .map(|c| c.ics_calendars.iter().map(IcsCalendarStatus::from).collect())
-        .unwrap_or_default()
-}
-
-/// Adds a read-only calendar from an .ics feed URL.
-///
-/// This used to fetch the feed once up front to validate it before saving —
-/// but the frontend re-syncs immediately after a successful add anyway
-/// (`onChanged`), so that was a second live request for the same URL within
-/// about a second of the first. Some feed hosts rate-limit aggressively
-/// enough that just that pair — or a couple of retries after a typo — was
-/// enough to trip a 429. A bad or unreachable URL now surfaces through the
-/// same warning banner a broken Google account already gets, on the next
-/// sync, rather than blocking the add on a live call.
-#[tauri::command]
-pub async fn add_ics_calendar(
-    name: String,
-    url: String,
-) -> Result<Vec<IcsCalendarStatus>, String> {
-    let mut config = load_config().ok_or("Connect to Notion first.")?;
-    let url = url.trim().to_string();
-    let name = name.trim().to_string();
-    if url.is_empty() {
-        return Err("Paste the calendar's .ics feed URL.".into());
-    }
-    let id = new_account_id();
-
-    config.ics_calendars.push(IcsCalendar {
-        id,
-        name: if name.is_empty() { "calendar".to_string() } else { name },
-        url,
-    });
-    save_config(&config)?;
-
-    Ok(config.ics_calendars.iter().map(IcsCalendarStatus::from).collect())
-}
-
-/// Forgets one imported calendar. Its events disappear from the list on the
-/// next sync; the feed itself is untouched.
-#[tauri::command]
-pub async fn remove_ics_calendar(
-    calendar_id: String,
-    cache: State<'_, ItemCache>,
-) -> Result<(), String> {
-    let mut config = load_config().ok_or("No config")?;
-    config.ics_calendars.retain(|c| c.id != calendar_id);
-    save_config(&config)?;
-
-    cache
-        .0
-        .lock()
-        .expect("item cache poisoned")
-        .retain(|i| i.source != SOURCE_ICS || i.calendar_id.as_deref() != Some(calendar_id.as_str()));
-    Ok(())
 }

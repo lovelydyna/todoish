@@ -1,4 +1,8 @@
-//! The Notion client. One Notion **data source** backs the whole app:
+//! The Notion client. Every database shared with the integration backs the
+//! app — there's no id to configure. [`resolve_sources`] finds them via
+//! `/v1/search`, the same visibility a manually-pasted id was always subject
+//! to (a database only shows up once you add the integration under its own
+//! "··· → Connections" menu in Notion).
 //!
 //! | Property      | Notion type             | Meaning                       |
 //! |---------------|-------------------------|-------------------------------|
@@ -9,13 +13,12 @@
 //! | `Description` | rich text               | free-form notes               |
 //!
 //! The task view groups by deadline, the calendar view by time. Both read the
-//! same rows.
+//! same rows, merged across every shared database.
 //!
-//! Notion's 2025-09-03 API split "database" (a container) from "data source"
-//! (the table inside it), and queries now address a data source. The id in a
-//! database URL is still a *database* id, so [`resolve_source`] accepts
-//! either and looks up the data source when it needs to — the user should not
-//! have to know which kind of id they pasted.
+//! Notion's 2025-09-03 API split "database" (a container, sharing and all)
+//! from "data source" (the actual table — queried, written to, and searched
+//! for directly; `/v1/search` has no "database" filter value at all, only
+//! `"page"` and `"data_source"`).
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -30,6 +33,10 @@ const NOTION_VERSION: &str = "2025-09-03";
 #[derive(Clone, Debug)]
 pub struct Source {
     pub data_source_id: String,
+    /// The database's own title, for labeling multiple shared databases and
+    /// for picking a deterministic default (alphabetically first) when more
+    /// than one is shared and nothing else says which to use.
+    pub title: String,
     pub schema: Schema,
 }
 
@@ -106,9 +113,12 @@ impl Schema {
     }
 }
 
-/// What the app matched in a user's database, for the settings readout.
+/// What the app matched in one shared database, for the settings readout.
 #[derive(Debug, Clone, Serialize)]
 pub struct SchemaReport {
+    /// The database's own title, so a settings list of several reads as
+    /// "School: ...", "Work: ..." rather than an unlabeled stack.
+    pub database_title: String,
     pub title: String,
     pub status: Option<String>,
     /// The option written for each stage, e.g. ["Not started", "In progress", "Done"].
@@ -119,39 +129,49 @@ pub struct SchemaReport {
     pub missing: Vec<String>,
 }
 
-/// Reads the database and reports which property fills each role. Bypasses the
-/// cache so it reflects renames made since the app started.
-pub async fn describe_schema(api_key: &str, database_id: &str) -> Result<SchemaReport, String> {
-    forget_sources();
-    let source = resolve_source(api_key, database_id).await?;
-    let schema = source.schema;
-    let status_options = schema
-        .status
-        .as_ref()
-        .map(|st| {
-            ["Todo", "In Progress", "Done"]
-                .iter()
-                .map(|stage| st.option_for(stage).unwrap_or("—").to_string())
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(SchemaReport {
-        missing: schema.missing(),
-        title: schema.title.clone(),
-        status: schema.status.as_ref().map(|st| st.name.clone()),
-        status_options,
-        time: schema.time,
-        deadline: schema.deadline,
-        description: schema.description,
-    })
+impl From<&Source> for SchemaReport {
+    fn from(source: &Source) -> Self {
+        let schema = &source.schema;
+        let status_options = schema
+            .status
+            .as_ref()
+            .map(|st| {
+                ["Todo", "In Progress", "Done"]
+                    .iter()
+                    .map(|stage| st.option_for(stage).unwrap_or("—").to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        SchemaReport {
+            database_title: source.title.clone(),
+            missing: schema.missing(),
+            title: schema.title.clone(),
+            status: schema.status.as_ref().map(|st| st.name.clone()),
+            status_options,
+            time: schema.time.clone(),
+            deadline: schema.deadline.clone(),
+            description: schema.description.clone(),
+        }
+    }
 }
 
-/// Resolved sources, keyed by whatever id the user configured. Resolution
-/// costs two round trips, and the sync loop runs every 60s.
-static SOURCES: OnceLock<Mutex<HashMap<String, Source>>> = OnceLock::new();
+/// Reads every database shared with the integration and reports which
+/// property fills each role in each one. Bypasses the cache so it reflects
+/// renames, or newly-shared databases, made since the app started.
+pub async fn describe_schemas(api_key: &str) -> Result<Vec<SchemaReport>, String> {
+    forget_sources();
+    let sources = resolve_sources(api_key).await?;
+    Ok(sources.iter().map(SchemaReport::from).collect())
+}
 
-fn source_cache() -> &'static Mutex<HashMap<String, Source>> {
+/// Resolved sources, keyed by the connection token — a token only ever
+/// points at one Notion workspace, so this also invalidates itself if the
+/// user switches tokens without an explicit `forget_sources()`. Resolution
+/// costs a search plus one round trip per database, and the sync loop runs
+/// every 60s.
+static SOURCES: OnceLock<Mutex<HashMap<String, Vec<Source>>>> = OnceLock::new();
+
+fn source_cache() -> &'static Mutex<HashMap<String, Vec<Source>>> {
     SOURCES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -276,34 +296,121 @@ fn authed(request: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBu
         .header("Content-Type", "application/json")
 }
 
-/// Turns a configured id — database *or* data source — into a data source id.
-///
-/// Tries the database endpoint first, since the id people copy out of a Notion
-/// URL is a database id. A database with several data sources resolves to the
-/// first one; picking between them would need UI this app does not have.
-pub async fn resolve_source(api_key: &str, configured_id: &str) -> Result<Source, String> {
-    let configured_id = configured_id.trim();
-    if configured_id.is_empty() {
-        return Err("No database configured".into());
+/// Every data source shared with the integration, schema and all — the
+/// whole point being that nobody has to go find and paste an id. Per
+/// Notion's own docs, `/v1/search` filtered to `data_source` returns exactly
+/// what's been shared with the connection via "··· → Connections" on the
+/// database that owns it — the same visibility rule a manually-pasted id was
+/// always subject to anyway. (Searching by `"database"` is not — and was
+/// never, under this API version — a valid filter value; only `"page"` and
+/// `"data_source"` are. Using it is a 400, not an empty result.)
+pub async fn resolve_sources(api_key: &str) -> Result<Vec<Source>, String> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("No Notion connection token configured".into());
     }
 
-    if let Some(hit) = source_cache()
-        .lock()
-        .expect("source cache poisoned")
-        .get(configured_id)
-    {
+    if let Some(hit) = source_cache().lock().expect("source cache poisoned").get(api_key) {
         return Ok(hit.clone());
     }
 
-    let data_source_id = lookup_data_source(api_key, configured_id).await?;
-    let schema = fetch_schema(api_key, &data_source_id).await?;
-    let source = Source { data_source_id, schema };
+    let found = search_data_sources(api_key).await?;
+    if found.is_empty() {
+        return Err(
+            "No databases are shared with this integration yet. Open a database in Notion, \
+             click \"···\" in the top right, choose Connections, and add your integration."
+                .into(),
+        );
+    }
+
+    let mut sources = Vec::new();
+    for ds in found {
+        let schema = fetch_schema(api_key, &ds.id).await?;
+        sources.push(Source { data_source_id: ds.id, title: ds.title, schema });
+    }
+    // Deterministic order — alphabetical by title — so "the first one" (where
+    // a freshly created item lands, absent any other choice) doesn't depend
+    // on whatever order Notion's search happened to return.
+    sources.sort_by(|a, b| a.title.cmp(&b.title));
 
     source_cache()
         .lock()
         .expect("source cache poisoned")
-        .insert(configured_id.to_string(), source.clone());
-    Ok(source)
+        .insert(api_key.to_string(), sources.clone());
+    Ok(sources)
+}
+
+struct FoundDataSource {
+    id: String,
+    title: String,
+}
+
+/// Pages through `/v1/search` filtered to `data_source` objects.
+async fn search_data_sources(api_key: &str) -> Result<Vec<FoundDataSource>, String> {
+    let client = Client::new();
+    let mut found = Vec::new();
+    let mut cursor: Option<String> = None;
+
+    loop {
+        let mut body = json!({
+            "filter": { "value": "data_source", "property": "object" },
+            "page_size": 100,
+        });
+        if let Some(c) = &cursor {
+            body["start_cursor"] = json!(c);
+        }
+
+        let response = authed(client.post("https://api.notion.com/v1/search"), api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| crate::http::describe_send_error("Notion", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(describe_api_error(status, &text));
+        }
+
+        let data: NotionSearchResponse = response.json().await.map_err(|e| e.to_string())?;
+        found.extend(data.results.into_iter().map(|ds| FoundDataSource {
+            id: ds.id,
+            title: extract_db_title(&ds.title),
+        }));
+
+        match (data.has_more, data.next_cursor) {
+            (true, Some(next)) => cursor = Some(next),
+            _ => break,
+        }
+    }
+
+    Ok(found)
+}
+
+/// A data source's title, straight off its top-level `title` field (not
+/// nested under `properties`, unlike a page's). Notion leaves this empty for
+/// a genuinely untitled one, which would otherwise sort to the top of the
+/// alphabetical default-source ordering and silently become where new items
+/// land — "Untitled" avoids that.
+fn extract_db_title(title: &[Value]) -> String {
+    let joined: String = title.iter().filter_map(|v| v["plain_text"].as_str()).collect();
+    if joined.is_empty() { "Untitled".to_string() } else { joined }
+}
+
+#[derive(Deserialize)]
+struct NotionSearchResponse {
+    results: Vec<NotionSearchResult>,
+    #[serde(default)]
+    has_more: bool,
+    #[serde(default)]
+    next_cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NotionSearchResult {
+    id: String,
+    #[serde(default)]
+    title: Vec<Value>,
 }
 
 /// Reads the data source's properties so the app can match its own field
@@ -331,59 +438,14 @@ async fn fetch_schema(api_key: &str, data_source_id: &str) -> Result<Schema, Str
     Ok(detect_schema(&body["properties"]))
 }
 
-/// Clears the cache so the next call re-reads ids and schema. Called after the
-/// user saves settings, since they may have pointed at a different database or
-/// renamed a property.
+/// Clears the cache so the next call re-reads which databases are shared and
+/// their schema. Called after the user saves settings, since they may have
+/// changed the connection token, shared a new database, or renamed a property.
 pub fn forget_sources() {
     source_cache()
         .lock()
         .expect("source cache poisoned")
         .clear();
-}
-
-async fn lookup_data_source(api_key: &str, id: &str) -> Result<String, String> {
-    let client = Client::new();
-
-    let response = authed(
-        client.get(format!("https://api.notion.com/v1/databases/{}", id)),
-        api_key,
-    )
-    .send()
-    .await
-    .map_err(|e| crate::http::describe_send_error("Notion", e))?;
-
-    if response.status().is_success() {
-        let body: Value = response.json().await.map_err(|e| e.to_string())?;
-        let first = body["data_sources"]
-            .as_array()
-            .and_then(|sources| sources.first())
-            .and_then(|source| source["id"].as_str());
-        return match first {
-            Some(ds) => Ok(ds.to_string()),
-            None => Err(format!(
-                "Notion database {id} has no data sources — open it in Notion and check                  ··· → Manage data sources"
-            )),
-        };
-    }
-
-    // Not a database id. The other possibility is that it already *is* a data
-    // source id, which is what the "Copy data source ID" button hands you.
-    let probe = authed(
-        client.get(format!("https://api.notion.com/v1/data_sources/{}", id)),
-        api_key,
-    )
-    .send()
-    .await
-    .map_err(|e| crate::http::describe_send_error("Notion", e))?;
-
-    if probe.status().is_success() {
-        return Ok(id.to_string());
-    }
-
-    let detail = probe.text().await.unwrap_or_default();
-    Err(format!(
-        "Notion could not find a database or data source with id `{id}`. Check the id, and          that the database is shared with your connection (··· → Connections). {detail}"
-    ))
 }
 
 /// Retry an async Notion API call up to 3 times with exponential backoff (1s, 2s, 4s).
@@ -429,8 +491,6 @@ fn describe_api_error(status: reqwest::StatusCode, text: &str) -> String {
 /// Where a row came from, and therefore where writes to it go back to.
 pub const SOURCE_NOTION: &str = "notion";
 pub const SOURCE_GOOGLE: &str = "google";
-/// A read-only calendar imported from a plain .ics feed URL — see `ics.rs`.
-pub const SOURCE_ICS: &str = "ics";
 
 fn source_notion() -> String {
     SOURCE_NOTION.to_string()
@@ -451,11 +511,16 @@ pub struct Item {
     pub created_time: Option<String>,
     pub last_edited_time: Option<String>,
 
-    /// `"notion"`, `"google"`, or `"ics"`. Everything that writes routes on
-    /// this, so a row always goes back to the service it came from — `"ics"`
-    /// rows have nowhere to write back to at all.
+    /// `"notion"` or `"google"`. Everything that writes routes on this, so a
+    /// row always goes back to the service it came from.
     #[serde(default = "source_notion")]
     pub source: String,
+    /// Which Notion database (data source) this row lives in. `None` for
+    /// Google rows. More than one database can be shared with the
+    /// integration, each with its own property names and status options, so
+    /// a write has to know which one a row's schema comes from.
+    #[serde(default)]
+    pub data_source_id: Option<String>,
     /// Which Google calendar holds this event. `None` for Notion rows.
     #[serde(default)]
     pub calendar_id: Option<String>,
@@ -526,7 +591,8 @@ fn extract_date_end(props: &Value, key: &str) -> Option<String> {
     props[key]["date"]["end"].as_str().map(|s| s.to_string())
 }
 
-fn page_to_item(page: NotionPage, schema: &Schema) -> Option<Item> {
+fn page_to_item(page: NotionPage, source: &Source) -> Option<Item> {
+    let schema = &source.schema;
     let props = &page.properties;
     let name = extract_title(props, &schema.title);
     if name.is_empty() {
@@ -552,6 +618,7 @@ fn page_to_item(page: NotionPage, schema: &Schema) -> Option<Item> {
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
         source: source_notion(),
+        data_source_id: Some(source.data_source_id.clone()),
         calendar_id: None,
         account_id: None,
         url: None,
@@ -612,9 +679,14 @@ fn item_properties(
     props
 }
 
-pub async fn fetch_items(api_key: &str, database_id: &str) -> Result<Vec<Item>, String> {
-    let source = resolve_source(api_key, database_id).await?;
-    with_retry(|| fetch_items_once(api_key, &source)).await
+/// Every item across every database shared with the integration.
+pub async fn fetch_items(api_key: &str) -> Result<Vec<Item>, String> {
+    let sources = resolve_sources(api_key).await?;
+    let mut items = Vec::new();
+    for source in &sources {
+        items.extend(with_retry(|| fetch_items_once(api_key, source)).await?);
+    }
+    Ok(items)
 }
 
 async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, String> {
@@ -651,7 +723,7 @@ async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, S
         items.extend(
             data.results
                 .into_iter()
-                .filter_map(|page| page_to_item(page, &source.schema)),
+                .filter_map(|page| page_to_item(page, source)),
         );
 
         match (data.has_more, data.next_cursor) {
@@ -663,16 +735,31 @@ async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, S
     Ok(items)
 }
 
+/// The source a stored `data_source_id` refers to, or a clear error if it
+/// was unshared from the integration since the row was fetched.
+fn find_source<'a>(sources: &'a [Source], data_source_id: &str) -> Result<&'a Source, String> {
+    sources
+        .iter()
+        .find(|s| s.data_source_id == data_source_id)
+        .ok_or_else(|| {
+            "This item's database is no longer shared with the integration — try refreshing."
+                .to_string()
+        })
+}
+
+/// Creates a page in whichever database is alphabetically first among those
+/// shared with the integration — the same "default" role a flagged Google
+/// account plays, absent any UI for choosing among several Notion databases.
 pub async fn create_item(
     api_key: &str,
-    database_id: &str,
     name: &str,
     start: Option<&str>,
     end: Option<&str>,
     deadline: Option<&str>,
     description: Option<&str>,
 ) -> Result<Item, String> {
-    let source = resolve_source(api_key, database_id).await?;
+    let sources = resolve_sources(api_key).await?;
+    let source = sources.first().ok_or("No databases are shared with this integration.")?;
 
     let mut props = item_properties(&source.schema, name, start, end, deadline, description);
     if let Some(status) = &source.schema.status {
@@ -715,6 +802,7 @@ pub async fn create_item(
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
         source: source_notion(),
+        data_source_id: Some(source.data_source_id.clone()),
         calendar_id: None,
         account_id: None,
         url: None,
@@ -723,7 +811,7 @@ pub async fn create_item(
 
 pub async fn update_item(
     api_key: &str,
-    database_id: &str,
+    data_source_id: &str,
     item_id: &str,
     name: &str,
     start: Option<&str>,
@@ -731,19 +819,21 @@ pub async fn update_item(
     deadline: Option<&str>,
     description: Option<&str>,
 ) -> Result<(), String> {
-    let source = resolve_source(api_key, database_id).await?;
+    let sources = resolve_sources(api_key).await?;
+    let source = find_source(&sources, data_source_id)?;
     let props = item_properties(&source.schema, name, start, end, deadline, description);
     patch_page(api_key, item_id, json!({ "properties": props })).await
 }
 
 pub async fn set_item_status(
     api_key: &str,
-    database_id: &str,
+    data_source_id: &str,
     item_id: &str,
     status: &str,
 ) -> Result<(), String> {
-    let source = resolve_source(api_key, database_id).await?;
-    let Some(property) = source.schema.status else {
+    let sources = resolve_sources(api_key).await?;
+    let source = find_source(&sources, data_source_id)?;
+    let Some(property) = &source.schema.status else {
         return Err(
             "This database has no Status property, so items can't be marked done. \
              Add one (type: status) in Notion."
@@ -805,6 +895,10 @@ mod tests {
             deadline: Some("Deadline".into()),
             description: Some("Description".into()),
         }
+    }
+
+    fn full_source() -> Source {
+        Source { data_source_id: "ds1".into(), title: "Test".into(), schema: full_schema() }
     }
 
     /// A status property shaped the way Notion returns one by default.
@@ -941,7 +1035,7 @@ mod tests {
             last_edited_time: None,
             properties: json!({ "Name": { "title": [] } }),
         };
-        assert!(page_to_item(page, &full_schema()).is_none());
+        assert!(page_to_item(page, &full_source()).is_none());
     }
 
     #[test]
@@ -960,7 +1054,7 @@ mod tests {
                 ]}
             }),
         };
-        let item = page_to_item(page, &full_schema()).expect("item should parse");
+        let item = page_to_item(page, &full_source()).expect("item should parse");
         assert_eq!(item.name, "grant application");
         assert_eq!(item.status, "In Progress");
         assert_eq!(item.start, None);
@@ -976,6 +1070,38 @@ mod tests {
             last_edited_time: None,
             properties: json!({ "Name": { "title": [{ "plain_text": "x" }] } }),
         };
-        assert_eq!(page_to_item(page, &full_schema()).unwrap().status, "Todo");
+        assert_eq!(page_to_item(page, &full_source()).unwrap().status, "Todo");
+    }
+
+    #[test]
+    fn a_multi_run_title_is_joined() {
+        let title = vec![json!({ "plain_text": "School " }), json!({ "plain_text": "Tasks" })];
+        assert_eq!(extract_db_title(&title), "School Tasks");
+    }
+
+    #[test]
+    fn an_untitled_database_falls_back_rather_than_sorting_first() {
+        // An empty title would otherwise be the alphabetically-first string,
+        // silently becoming where a fresh item lands.
+        assert_eq!(extract_db_title(&[]), "Untitled");
+    }
+
+    #[test]
+    fn a_row_carries_the_data_source_it_came_from() {
+        let page = NotionPage {
+            id: "abc".into(),
+            created_time: None,
+            last_edited_time: None,
+            properties: json!({ "Name": { "title": [{ "plain_text": "x" }] } }),
+        };
+        let item = page_to_item(page, &full_source()).unwrap();
+        assert_eq!(item.data_source_id.as_deref(), Some("ds1"));
+    }
+
+    #[test]
+    fn find_source_locates_the_matching_data_source() {
+        let sources = vec![full_source()];
+        assert_eq!(find_source(&sources, "ds1").unwrap().data_source_id, "ds1");
+        assert!(find_source(&sources, "gone").is_err());
     }
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { CalendarAccount, IcsCalendarStatus, Item } from "../types";
+import { CalendarAccount, Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -24,7 +24,6 @@ interface CalendarProps {
   /** A calendar sync that failed while the tasks loaded fine. */
   calendarWarning: string | null;
   calendarAccounts: CalendarAccount[];
-  icsCalendars: IcsCalendarStatus[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -36,7 +35,7 @@ interface CalendarProps {
 }
 
 export function Calendar({
-  items, loading, error, calendarWarning, calendarAccounts, icsCalendars,
+  items, loading, error, calendarWarning, calendarAccounts,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
   onExit, onSettings, onNotes,
 }: CalendarProps) {
@@ -164,8 +163,8 @@ export function Calendar({
         setExpandedId((id) => (id === selected.id ? null : selected.id));
       }
       else if (key === bindings["add"]) { e.preventDefault(); setAdding(true); }
-      else if (key === bindings["edit"] && selected && selected.source !== "ics") setEditing(selected);
-      else if (key === bindings["delete"] && selected && selected.source !== "ics") setConfirmDelete(selected);
+      else if (key === bindings["edit"] && selected) setEditing(selected);
+      else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
       else if (key === bindings["notes-view"]) onNotes();
@@ -188,7 +187,6 @@ export function Calendar({
     onSelect,
     onCycle: (i: Item) => onCycle(i.id),
     calendarAccounts,
-    icsCalendars,
   };
 
   const empty = flat.length === 0;

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { CalendarAccount, IcsCalendarStatus, Item, TaskGroup as TG } from "../types";
+import { CalendarAccount, Item, TaskGroup as TG } from "../types";
 import { timeHint, isOverdue } from "../lib/timeHint";
 import { actionDate, groupSlug } from "../lib/groupTasks";
 import { sourceTag } from "../lib/sourceTag";
@@ -11,7 +11,6 @@ interface TaskRowProps {
    *  tint, so what needs attention soonest reads at a glance. */
   group?: TG;
   calendarAccounts: CalendarAccount[];
-  icsCalendars: IcsCalendarStatus[];
   selected: boolean;
   expanded: boolean;
   onClick: () => void;
@@ -20,18 +19,16 @@ interface TaskRowProps {
 
 const HIGHLIGHTED_GROUPS: TG[] = ["NOW", "THIS WEEK"];
 
-export function TaskRow({ item, group, calendarAccounts, icsCalendars, selected, expanded, onClick, onCycle }: TaskRowProps) {
+export function TaskRow({ item, group, calendarAccounts, selected, expanded, onClick, onCycle }: TaskRowProps) {
   const due = actionDate(item);
   const hint = timeHint(due);
   const overdue = isOverdue(due);
   const isDone = item.status === "Done";
-  const readOnly = item.source === "ics";
   const highlight = group && HIGHLIGHTED_GROUPS.includes(group) ? `task-row--${groupSlug(group)}` : "";
-  const tag = sourceTag(item, calendarAccounts, icsCalendars);
+  const tag = sourceTag(item, calendarAccounts);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (readOnly) return;
     invoke("open_in_notion", { itemId: item.id });
   };
 
@@ -43,7 +40,7 @@ export function TaskRow({ item, group, calendarAccounts, icsCalendars, selected,
     >
       <div className="task-row-main">
         <span className="task-cursor">{selected ? "▶" : " "}</span>
-        <StatusBox status={item.status} onCycle={onCycle} readOnly={readOnly} />
+        <StatusBox status={item.status} onCycle={onCycle} />
         {/* Which database or calendar this row belongs to — a dot rather
             than text so a merged list of many sources still scans fast. */}
         <span className="row-source-dot" style={{ background: tag.color }} title={tag.label} />

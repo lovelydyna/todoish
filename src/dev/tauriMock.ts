@@ -30,7 +30,6 @@ const day = (offset: number, time?: string): string => {
 
 let config: Config = {
   notion_api_key: "secret_demo",
-  database_id: "demo-database",
   completion_tone: "bell",
   startup_position: "",
   global_shortcut: "CmdOrControl+Shift+T",
@@ -52,6 +51,7 @@ const item = (id: string, name: string, fields: Partial<Item> = {}): Item => ({
   deadline: null,
   description: null,
   source: "notion",
+  data_source_id: "demo-data-source",
   calendar_id: null,
   account_id: null,
   url: null,
@@ -101,30 +101,27 @@ let items: Item[] = [
   // Rows that came from linked Notion Calendar accounts rather than the
   // database — two accounts, to exercise the multi-account picker.
   item("g:acct-work:primary:c1", "supervisor 1:1", {
-    source: "google", calendar_id: "primary", account_id: "acct-work",
+    source: "google", data_source_id: null, calendar_id: "primary", account_id: "acct-work",
     url: "https://calendar.google.com/event?eid=demo1",
     start: day(0, "14:00"), end: day(0, "14:30"),
   }),
   item("g:acct-work:primary:c2", "MRI scan slot", {
-    source: "google", calendar_id: "primary", account_id: "acct-work",
+    source: "google", data_source_id: null, calendar_id: "primary", account_id: "acct-work",
     url: "https://calendar.google.com/event?eid=demo2",
     start: day(1, "11:00"), end: day(1, "13:00"),
     description: "bring the participant consent forms",
   }),
   item("g:acct-work:primary:c3", "journal club", {
-    source: "google", calendar_id: "primary", account_id: "acct-work",
+    source: "google", data_source_id: null, calendar_id: "primary", account_id: "acct-work",
     url: "https://calendar.google.com/event?eid=demo3",
     start: day(2, "16:00"), end: day(2, "17:00"),
   }),
   item("g:acct-personal:primary:c4", "dentist", {
-    source: "google", calendar_id: "primary", account_id: "acct-personal",
+    source: "google", data_source_id: null, calendar_id: "primary", account_id: "acct-personal",
     url: "https://calendar.google.com/event?eid=demo4",
     start: day(3, "09:30"), end: day(3, "10:15"),
   }),
 ];
-
-/** No .ics calendars linked by default — added/removed through settings. */
-let icsCalendars: { id: string; name: string }[] = [];
 
 /** The demo runs with two calendar accounts linked, so the merged list —
  *  and the multi-account settings and picker — are what you see. */
@@ -209,7 +206,6 @@ const handlers: Record<string, (args: Args) => unknown> = {
     config = {
       ...config,
       notion_api_key: args.apiKey ?? config.notion_api_key,
-      database_id: args.databaseId ?? config.database_id,
       completion_tone: args.completionTone ?? config.completion_tone,
       startup_position: args.startupPosition ?? config.startup_position,
       global_shortcut: args.globalShortcut ?? config.global_shortcut,
@@ -244,6 +240,7 @@ const handlers: Record<string, (args: Args) => unknown> = {
       deadline: args.deadline ?? null,
       description: args.description ?? null,
       source: toCalendar ? "google" : "notion",
+      data_source_id: toCalendar ? null : "demo-data-source",
       calendar_id: toCalendar ? calendarId : null,
       account_id: toCalendar ? accountId : null,
       created_time: new Date().toISOString(),
@@ -298,21 +295,6 @@ const handlers: Record<string, (args: Args) => unknown> = {
   },
   save_calendar_selection: ({ accountId, calendars }) => {
     accounts = accounts.map((a) => (a.id === accountId ? { ...a, calendars } : a));
-    return null;
-  },
-
-  ics_calendars: () => icsCalendars,
-  add_ics_calendar: ({ name, url }) => {
-    if (!String(url ?? "").trim()) throw "Paste the calendar's .ics feed URL.";
-    icsCalendars = [
-      ...icsCalendars,
-      { id: `ics-demo${Date.now()}`, name: String(name ?? "").trim() || "calendar" },
-    ];
-    return icsCalendars;
-  },
-  remove_ics_calendar: ({ calendarId }) => {
-    icsCalendars = icsCalendars.filter((c) => c.id !== calendarId);
-    items = items.filter((i) => i.calendar_id !== calendarId || i.source !== "ics");
     return null;
   },
 

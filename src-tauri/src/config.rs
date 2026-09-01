@@ -50,23 +50,9 @@ pub fn new_account_id() -> String {
     (0..12).map(|_| format!("{:x}", rng.gen_range(0..16u8))).collect()
 }
 
-/// A read-only calendar imported from a plain .ics feed URL — the low-effort
-/// alternative to linking a full Google account. See `ics.rs`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IcsCalendar {
-    pub id: String,
-    pub name: String,
-    /// The feed URL. Google's "secret address" is exactly that — secret — so
-    /// this never crosses into the WebView; only `id`/`name` do, the same way
-    /// a Google account's client secret and refresh token stay backend-only.
-    pub url: String,
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     pub notion_api_key: String,
-    /// The one Notion database: Name · Status · Time · Deadline · Description.
-    pub database_id: String,
     #[serde(default = "default_tone")]
     pub completion_tone: String,
     #[serde(default)]
@@ -87,11 +73,6 @@ pub struct Config {
     /// calendar linked.
     #[serde(default)]
     pub google_accounts: Vec<GoogleAccount>,
-
-    /// Every read-only calendar imported from an .ics feed URL. Independent
-    /// of `google_accounts` — no OAuth, no write-back.
-    #[serde(default)]
-    pub ics_calendars: Vec<IcsCalendar>,
 
     // Pre-multi-account fields, read on load so an already-connected account
     // survives the upgrade rather than silently vanishing. Never written —
@@ -243,10 +224,7 @@ mod tests {
 
     #[test]
     fn a_config_with_no_legacy_connection_migrates_to_nothing() {
-        let mut config: Config = toml::from_str(
-            "notion_api_key = \"x\"\ndatabase_id = \"y\"\n",
-        )
-        .unwrap();
+        let mut config: Config = toml::from_str("notion_api_key = \"x\"\n").unwrap();
         config.migrate_legacy_google_account();
         assert!(config.google_accounts.is_empty());
     }
