@@ -1,6 +1,5 @@
 use crate::config::{load_config, new_account_id, save_config, Config, GoogleAccount, IcsCalendar, SyncedCalendar};
 use crate::gcal;
-use crate::ics;
 use crate::merge::{self, SyncResult};
 use crate::notion::{self, Item, SOURCE_GOOGLE, SOURCE_ICS};
 use std::sync::Mutex;
@@ -511,9 +510,16 @@ pub async fn ics_calendars() -> Vec<IcsCalendarStatus> {
         .unwrap_or_default()
 }
 
-/// Adds a read-only calendar from an .ics feed URL. Fetches it once up front
-/// so a bad or unreachable URL is caught here rather than silently yielding
-/// nothing on every sync afterward.
+/// Adds a read-only calendar from an .ics feed URL.
+///
+/// This used to fetch the feed once up front to validate it before saving —
+/// but the frontend re-syncs immediately after a successful add anyway
+/// (`onChanged`), so that was a second live request for the same URL within
+/// about a second of the first. Some feed hosts rate-limit aggressively
+/// enough that just that pair — or a couple of retries after a typo — was
+/// enough to trip a 429. A bad or unreachable URL now surfaces through the
+/// same warning banner a broken Google account already gets, on the next
+/// sync, rather than blocking the add on a live call.
 #[tauri::command]
 pub async fn add_ics_calendar(
     name: String,
@@ -526,7 +532,6 @@ pub async fn add_ics_calendar(
         return Err("Paste the calendar's .ics feed URL.".into());
     }
     let id = new_account_id();
-    ics::fetch_events(&url, &id).await?;
 
     config.ics_calendars.push(IcsCalendar {
         id,

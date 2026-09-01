@@ -353,7 +353,7 @@ export function CalendarSettings({ onChanged }: CalendarSettingsProps) {
                 onClick={addIcsCalendar}
                 disabled={icsConnecting || !icsUrl.trim()}
               >
-                {icsConnecting ? "checking the feed…" : "add"}
+                {icsConnecting ? "adding…" : "add"}
               </button>
               <button
                 type="button"

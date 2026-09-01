@@ -194,9 +194,23 @@ pub fn to_item(event: IcsEvent, calendar_id: &str) -> Item {
 /// unreachable host is the one error case — a feed with zero events is not
 /// a failure, it just yields nothing.
 pub async fn fetch_events(url: &str, calendar_id: &str) -> Result<Vec<Item>, String> {
-    let response = reqwest::get(url).await.map_err(|e| e.to_string())?;
+    let response = reqwest::get(url)
+        .await
+        .map_err(|e| crate::http::describe_send_error("the calendar feed", e))?;
     if !response.status().is_success() {
-        return Err(format!("the calendar feed returned {}", response.status()));
+        let status = response.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            // Every linked calendar re-fetches on the same ~60s cycle, so a
+            // feed with a strict rate limit can trip this even under normal
+            // use — it isn't necessarily something the user did.
+            return Err(
+                "the calendar feed returned 429 (too many requests) — it's being polled too \
+                 often for how strictly this host rate-limits; it should clear on its own \
+                 within a few minutes"
+                    .to_string(),
+            );
+        }
+        return Err(format!("the calendar feed returned {status}"));
     }
     let body = response.text().await.map_err(|e| e.to_string())?;
     Ok(parse_events(&body)
