@@ -5,7 +5,7 @@ import { Setup, SettingsTab } from "./views/Setup";
 import { Main } from "./views/Main";
 import { Calendar } from "./views/Calendar";
 import { Notes } from "./views/Notes";
-import { Config, CalendarAccount } from "./types";
+import { Config, CalendarAccount, IcsCalendarStatus } from "./types";
 import { useItems } from "./hooks/useItems";
 import { applyAppearance, watchSystemScheme } from "./lib/theme";
 import { initAudio } from "./lib/sounds";
@@ -28,6 +28,8 @@ export default function App() {
   // and which ones it lists — comes straight from this; with none linked
   // there is no choice to make.
   const [calendarAccounts, setCalendarAccounts] = useState<CalendarAccount[]>([]);
+  // Every imported read-only .ics calendar, alongside the linked Google ones.
+  const [icsCalendars, setIcsCalendars] = useState<IcsCalendarStatus[]>([]);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   // Whether the notes view, once it mounts, should start a fresh note
   // rather than reopening whichever one was last open.
@@ -44,6 +46,11 @@ export default function App() {
       .then(setCalendarAccounts)
       .catch(() => setCalendarAccounts([]));
 
+  const readIcsCalendars = () =>
+    invoke<IcsCalendarStatus[]>("ics_calendars")
+      .then(setIcsCalendars)
+      .catch(() => setIcsCalendars([]));
+
   useEffect(() => {
     invoke<Config | null>("get_config")
       .then((config) => {
@@ -54,6 +61,7 @@ export default function App() {
       .catch(() => setView("setup"));
 
     readCalendarAccounts();
+    readIcsCalendars();
 
     const win = getCurrentWindow();
 
@@ -89,6 +97,7 @@ export default function App() {
   // Re-read config on save so the calendar appears without a restart.
   const closeSettings = () => {
     readCalendarAccounts();
+    readIcsCalendars();
     invoke<Config | null>("get_config")
       .then((config) => {
         setCurrentConfig(config);
@@ -103,6 +112,7 @@ export default function App() {
     // The calendar tab saves as you go, so its state can have changed even
     // when the rest of the form is being discarded.
     readCalendarAccounts();
+    readIcsCalendars();
     applyAppearance(appearanceOf(currentConfig));
     setView("main");
   };
@@ -151,6 +161,7 @@ export default function App() {
           error={error}
           calendarWarning={calendarWarning}
           calendarAccounts={calendarAccounts}
+          icsCalendars={icsCalendars}
           onCycle={cycleStatus}
           onAdd={addItem}
           onUpdate={updateItem}
@@ -172,6 +183,7 @@ export default function App() {
         error={error}
         calendarWarning={calendarWarning}
         calendarAccounts={calendarAccounts}
+        icsCalendars={icsCalendars}
         onCycle={cycleStatus}
         onAdd={addItem}
         onUpdate={updateItem}

@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod gcal;
+mod ics;
 mod merge;
 mod notes;
 mod notion;
@@ -102,6 +103,9 @@ pub fn run() {
             commands::set_default_calendar_account,
             commands::list_calendars,
             commands::save_calendar_selection,
+            commands::ics_calendars,
+            commands::add_ics_calendar,
+            commands::remove_ics_calendar,
             commands::save_note,
             commands::list_notes,
             commands::read_note,

@@ -440,7 +440,7 @@ fn is_all_day(value: &Value) -> bool {
 }
 
 /// Shifts an all-day `YYYY-MM-DD` by whole days.
-fn shift_date(date: &str, days: i64) -> Option<String> {
+pub(crate) fn shift_date(date: &str, days: i64) -> Option<String> {
     let parsed = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
     Some(
         parsed

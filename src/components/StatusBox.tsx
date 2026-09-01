@@ -1,6 +1,9 @@
 interface StatusBoxProps {
   status: string;
   onCycle: () => void;
+  /** Imported .ics calendars have no status of their own and nowhere to
+   *  write one back to — the box shows but doesn't respond to clicks. */
+  readOnly?: boolean;
 }
 
 const LABELS: Record<string, string> = {
@@ -16,9 +19,19 @@ const LABELS: Record<string, string> = {
  * indeterminate treatment — a dash in an outlined box — which reads as
  * "started but not finished" without inventing a new shape.
  */
-export function StatusBox({ status, onCycle }: StatusBoxProps) {
+export function StatusBox({ status, onCycle, readOnly }: StatusBoxProps) {
   const variant =
     status === "Done" ? "done" : status === "In Progress" ? "progress" : "todo";
+
+  if (readOnly) {
+    return (
+      <span
+        className={`statusbox statusbox--${variant} statusbox--readonly`}
+        title="read-only — imported from an .ics calendar"
+        aria-label={status}
+      />
+    );
+  }
 
   return (
     <button

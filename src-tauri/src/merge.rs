@@ -8,6 +8,7 @@
 
 use crate::config::{Config, GoogleAccount};
 use crate::gcal;
+use crate::ics;
 use crate::notion::{self, Item, SOURCE_GOOGLE};
 
 /// What one sync produced.
@@ -83,16 +84,12 @@ pub fn find_account<'a>(config: &'a Config, account_id: &str) -> Result<&'a Goog
         })
 }
 
-/// Notion first, then every linked Google account. Notion is required; each
-/// Google account is best-effort and reported independently.
+/// Notion first, then every linked Google account, then every imported .ics
+/// calendar. Notion is required; everything else is best-effort and reported
+/// independently, so one dead feed or revoked grant never hides events from
+/// the sources that are still fine.
 pub async fn fetch_all(config: &Config) -> Result<SyncResult, String> {
-    let items = notion::fetch_items(&config.notion_api_key, &config.database_id).await?;
-
-    if config.google_accounts.is_empty() {
-        return Ok(SyncResult { items, warning: None });
-    }
-
-    let mut items = items;
+    let mut items = notion::fetch_items(&config.notion_api_key, &config.database_id).await?;
     let mut warnings = Vec::new();
 
     for account in &config.google_accounts {
@@ -106,6 +103,13 @@ pub async fn fetch_all(config: &Config) -> Result<SyncResult, String> {
                 };
                 warnings.push(format!("{who}: {e}"));
             }
+        }
+    }
+
+    for calendar in &config.ics_calendars {
+        match ics::fetch_events(&calendar.url, &calendar.id).await {
+            Ok(events) => items.extend(events),
+            Err(e) => warnings.push(format!("{}: {e}", calendar.name)),
         }
     }
 

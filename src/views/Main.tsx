@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { CalendarAccount, Item } from "../types";
+import { CalendarAccount, IcsCalendarStatus, Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -18,6 +18,7 @@ interface MainProps {
   /** A calendar sync that failed while the tasks loaded fine. */
   calendarWarning: string | null;
   calendarAccounts: CalendarAccount[];
+  icsCalendars: IcsCalendarStatus[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -34,7 +35,7 @@ interface PendingDelete {
 }
 
 export function Main({
-  items, loading, error, calendarWarning, calendarAccounts,
+  items, loading, error, calendarWarning, calendarAccounts, icsCalendars,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
   onSettings, onCalendar, onNotes,
 }: MainProps) {
@@ -125,9 +126,9 @@ export function Main({
       else if (key === bindings["cycle-status"] && selected) { e.preventDefault(); onCycle(selected.id); }
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["add"])     { e.preventDefault(); setAdding(true); }
-      else if (key === bindings["edit"] && selected) { e.preventDefault(); setEditing(selected); }
+      else if (key === bindings["edit"] && selected && selected.source !== "ics") { e.preventDefault(); setEditing(selected); }
       else if (key === bindings["help"])    onSettings("keybindings");
-      else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
+      else if (key === bindings["delete"] && selected && selected.source !== "ics") setConfirmDelete(selected);
       else if (key === bindings["toggle-done"]) setShowAllDone((v) => !v);
       else if (key === bindings["undo"])    undoDelete();
       else if (key === bindings["expand"] && selected)
@@ -199,6 +200,7 @@ export function Main({
             label={group === "DONE" && showAllDone ? "DONE · all" : group}
             items={groups[group]}
             calendarAccounts={calendarAccounts}
+            icsCalendars={icsCalendars}
             selectedId={selected?.id ?? null}
             expandedId={expandedId}
             onSelect={selectRow}

@@ -1,5 +1,6 @@
-/** Which service a row came from, and where writes to it go back to. */
-export type Source = "notion" | "google";
+/** Which service a row came from, and where writes to it go back to.
+ *  "ics" rows have nowhere to write back to — see IcsCalendar. */
+export type Source = "notion" | "google" | "ics";
 
 /**
  * One row of the merged list, serving both views.
@@ -73,6 +74,14 @@ export interface CalendarInfo {
   name: string;
   primary: boolean;
   writable: boolean;
+}
+
+/** One read-only calendar imported from an .ics feed URL. The URL itself
+ *  never crosses into the frontend — same treatment as a Google account's
+ *  client secret. Mirrors commands::IcsCalendarStatus. */
+export interface IcsCalendarStatus {
+  id: string;
+  name: string;
 }
 
 /** One saved note, for the notes tab in settings. Mirrors notes::NoteSummary. */

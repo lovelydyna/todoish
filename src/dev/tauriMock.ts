@@ -123,6 +123,9 @@ let items: Item[] = [
   }),
 ];
 
+/** No .ics calendars linked by default — added/removed through settings. */
+let icsCalendars: { id: string; name: string }[] = [];
+
 /** The demo runs with two calendar accounts linked, so the merged list —
  *  and the multi-account settings and picker — are what you see. */
 let accounts = [
@@ -297,6 +300,22 @@ const handlers: Record<string, (args: Args) => unknown> = {
     accounts = accounts.map((a) => (a.id === accountId ? { ...a, calendars } : a));
     return null;
   },
+
+  ics_calendars: () => icsCalendars,
+  add_ics_calendar: ({ name, url }) => {
+    if (!String(url ?? "").trim()) throw "Paste the calendar's .ics feed URL.";
+    icsCalendars = [
+      ...icsCalendars,
+      { id: `ics-demo${Date.now()}`, name: String(name ?? "").trim() || "calendar" },
+    ];
+    return icsCalendars;
+  },
+  remove_ics_calendar: ({ calendarId }) => {
+    icsCalendars = icsCalendars.filter((c) => c.id !== calendarId);
+    items = items.filter((i) => i.calendar_id !== calendarId || i.source !== "ics");
+    return null;
+  },
+
   get_autostart: () => false,
   set_autostart: () => null,
   quit_app: () => null,

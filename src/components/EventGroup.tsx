@@ -1,4 +1,4 @@
-import { CalendarAccount, Item } from "../types";
+import { CalendarAccount, IcsCalendarStatus, Item } from "../types";
 import { EventRow } from "./EventRow";
 
 interface EventGroupProps {
@@ -8,6 +8,7 @@ interface EventGroupProps {
   variant?: "today" | "tomorrow" | "upcoming";
   events: Item[];
   calendarAccounts: CalendarAccount[];
+  icsCalendars: IcsCalendarStatus[];
   selectedId: string | null;
   expandedId: string | null;
   onSelect: (event: Item) => void;
@@ -19,6 +20,7 @@ export function EventGroup({
   variant,
   events,
   calendarAccounts,
+  icsCalendars,
   selectedId,
   expandedId,
   onSelect,
@@ -36,6 +38,7 @@ export function EventGroup({
           key={event.id}
           event={event}
           calendarAccounts={calendarAccounts}
+          icsCalendars={icsCalendars}
           selected={event.id === selectedId}
           expanded={event.id === expandedId}
           onClick={() => onSelect(event)}

@@ -411,6 +411,8 @@ where
 /// Where a row came from, and therefore where writes to it go back to.
 pub const SOURCE_NOTION: &str = "notion";
 pub const SOURCE_GOOGLE: &str = "google";
+/// A read-only calendar imported from a plain .ics feed URL — see `ics.rs`.
+pub const SOURCE_ICS: &str = "ics";
 
 fn source_notion() -> String {
     SOURCE_NOTION.to_string()
@@ -431,8 +433,9 @@ pub struct Item {
     pub created_time: Option<String>,
     pub last_edited_time: Option<String>,
 
-    /// `"notion"` or `"google"`. Everything that writes routes on this, so a
-    /// row always goes back to the service it came from.
+    /// `"notion"`, `"google"`, or `"ics"`. Everything that writes routes on
+    /// this, so a row always goes back to the service it came from — `"ics"`
+    /// rows have nowhere to write back to at all.
     #[serde(default = "source_notion")]
     pub source: String,
     /// Which Google calendar holds this event. `None` for Notion rows.

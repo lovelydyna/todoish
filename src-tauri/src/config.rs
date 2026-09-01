@@ -50,6 +50,18 @@ pub fn new_account_id() -> String {
     (0..12).map(|_| format!("{:x}", rng.gen_range(0..16u8))).collect()
 }
 
+/// A read-only calendar imported from a plain .ics feed URL — the low-effort
+/// alternative to linking a full Google account. See `ics.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IcsCalendar {
+    pub id: String,
+    pub name: String,
+    /// The feed URL. Google's "secret address" is exactly that — secret — so
+    /// this never crosses into the WebView; only `id`/`name` do, the same way
+    /// a Google account's client secret and refresh token stay backend-only.
+    pub url: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     pub notion_api_key: String,
@@ -75,6 +87,11 @@ pub struct Config {
     /// calendar linked.
     #[serde(default)]
     pub google_accounts: Vec<GoogleAccount>,
+
+    /// Every read-only calendar imported from an .ics feed URL. Independent
+    /// of `google_accounts` — no OAuth, no write-back.
+    #[serde(default)]
+    pub ics_calendars: Vec<IcsCalendar>,
 
     // Pre-multi-account fields, read on load so an already-connected account
     // survives the upgrade rather than silently vanishing. Never written —

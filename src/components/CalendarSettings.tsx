@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CalendarAccount, CalendarInfo } from "../types";
+import { CalendarAccount, CalendarInfo, IcsCalendarStatus } from "../types";
 import { FieldLabel } from "./InfoTip";
 
 interface CalendarSettingsProps {
@@ -32,6 +32,12 @@ export function CalendarSettings({ onChanged }: CalendarSettingsProps) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
+  const [icsCalendars, setIcsCalendars] = useState<IcsCalendarStatus[]>([]);
+  const [addingIcs, setAddingIcs] = useState(false);
+  const [icsName, setIcsName] = useState("");
+  const [icsUrl, setIcsUrl] = useState("");
+  const [icsConnecting, setIcsConnecting] = useState(false);
+
   const loadAccounts = useCallback(async () => {
     const list = await invoke<CalendarAccount[]>("calendar_accounts");
     setAccounts(list);
@@ -51,6 +57,7 @@ export function CalendarSettings({ onChanged }: CalendarSettingsProps) {
     loadAccounts()
       .then((list) => Promise.all(list.map((a) => loadCalendarsFor(a.id))))
       .catch((e) => setError(String(e)));
+    invoke<IcsCalendarStatus[]>("ics_calendars").then(setIcsCalendars).catch((e) => setError(String(e)));
   }, [loadAccounts, loadCalendarsFor]);
 
   const connect = async () => {
@@ -116,6 +123,37 @@ export function CalendarSettings({ onChanged }: CalendarSettingsProps) {
     try {
       await invoke("save_calendar_selection", { accountId: account.id, calendars: next });
       setNote("saved");
+      onChanged?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const addIcsCalendar = async () => {
+    setError(null);
+    setIcsConnecting(true);
+    try {
+      const list = await invoke<IcsCalendarStatus[]>("add_ics_calendar", {
+        name: icsName.trim(),
+        url: icsUrl.trim(),
+      });
+      setIcsCalendars(list);
+      setAddingIcs(false);
+      setIcsName("");
+      setIcsUrl("");
+      onChanged?.();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIcsConnecting(false);
+    }
+  };
+
+  const removeIcsCalendar = async (calendarId: string) => {
+    setError(null);
+    try {
+      await invoke("remove_ics_calendar", { calendarId });
+      setIcsCalendars((prev) => prev.filter((c) => c.id !== calendarId));
       onChanged?.();
     } catch (e) {
       setError(String(e));
@@ -243,6 +281,85 @@ export function CalendarSettings({ onChanged }: CalendarSettingsProps) {
                 className="toggle-btn"
                 onClick={() => { setAdding(false); setClientId(""); setClientSecret(""); }}
                 disabled={connecting}
+              >
+                cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="field">
+        <FieldLabel info="A read-only alternative to linking a Google account: paste a calendar's .ics feed URL — in Google Calendar, Settings → that calendar → Integrate calendar → 'Secret address in iCal format'. No OAuth, but todoish can't write status back to it, and Google only refreshes the feed every few hours.">
+          read-only calendars (.ics)
+        </FieldLabel>
+
+        {icsCalendars.map((cal) => (
+          <div key={cal.id} className="calendar-account">
+            <span className="calendar-account-mail">{cal.name}</span>
+            <span className="calendar-account-actions">
+              <button
+                type="button"
+                className="toggle-btn"
+                onClick={() => removeIcsCalendar(cal.id)}
+              >
+                remove
+              </button>
+            </span>
+          </div>
+        ))}
+
+        {!addingIcs && (
+          <button
+            type="button"
+            className="calendar-add-account-btn"
+            onClick={() => setAddingIcs(true)}
+          >
+            + add a calendar feed
+          </button>
+        )}
+
+        {addingIcs && (
+          <div className="calendar-account-block">
+            <div className="field">
+              <FieldLabel>name</FieldLabel>
+              <input
+                className="field-input"
+                type="text"
+                value={icsName}
+                onChange={(e) => setIcsName(e.target.value)}
+                placeholder="e.g. school"
+                spellCheck={false}
+                autoFocus
+              />
+            </div>
+
+            <div className="field">
+              <FieldLabel>.ics feed url</FieldLabel>
+              <input
+                className="field-input"
+                type="password"
+                value={icsUrl}
+                onChange={(e) => setIcsUrl(e.target.value)}
+                placeholder="https://calendar.google.com/calendar/ical/..."
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="calendar-add-actions">
+              <button
+                type="button"
+                className="setup-submit"
+                onClick={addIcsCalendar}
+                disabled={icsConnecting || !icsUrl.trim()}
+              >
+                {icsConnecting ? "checking the feed…" : "add"}
+              </button>
+              <button
+                type="button"
+                className="toggle-btn"
+                onClick={() => { setAddingIcs(false); setIcsName(""); setIcsUrl(""); }}
+                disabled={icsConnecting}
               >
                 cancel
               </button>
