@@ -131,11 +131,24 @@ export function CalendarSettings({ onChanged }: CalendarSettingsProps) {
 
   const addIcsCalendar = async () => {
     setError(null);
+    const url = icsUrl.trim();
+    // A cheap, offline sanity check — the backend no longer fetches the feed
+    // at add time (that fetch, plus the resync right after, was enough to
+    // trip some hosts' rate limits), so a bad URL would otherwise only
+    // surface later as a sync warning instead of right here where it's
+    // easy to fix.
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+    } catch {
+      setError("That doesn't look like a valid URL — check it was copied in full (it should start with http:// or https://).");
+      return;
+    }
     setIcsConnecting(true);
     try {
       const list = await invoke<IcsCalendarStatus[]>("add_ics_calendar", {
         name: icsName.trim(),
-        url: icsUrl.trim(),
+        url,
       });
       setIcsCalendars(list);
       setAddingIcs(false);
