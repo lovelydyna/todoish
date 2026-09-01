@@ -30,6 +30,8 @@ const day = (offset: number, time?: string): string => {
 
 let config: Config = {
   notion_api_key: "secret_demo",
+  enabled_data_sources: [],
+  schema_overrides: {},
   completion_tone: "bell",
   startup_position: "",
   global_shortcut: "CmdOrControl+Shift+T",
@@ -198,14 +200,73 @@ function uniqueNoteFilename(name: string): string {
 
 type Args = Record<string, any>;
 
+/** Two demo databases, so the settings picker/override UI has something
+ *  real to show — one fully matched, one missing most roles. */
+const demoDataSources = [
+  {
+    data_source_id: "ds-demo1",
+    database_title: "Todoish",
+    properties: [
+      { name: "Name", kind: "title" },
+      { name: "Status", kind: "status" },
+      { name: "Date", kind: "date" },
+      { name: "Deadline", kind: "date" },
+      { name: "Description", kind: "rich_text" },
+      { name: "Priority", kind: "select" },
+    ],
+    auto: { status: "Status", time: "Date", deadline: "Deadline", description: "Description" },
+    statusOptions: ["Not started", "In progress", "Done"],
+  },
+  {
+    data_source_id: "ds-demo2",
+    database_title: "Reading list",
+    properties: [
+      { name: "Name", kind: "title" },
+      { name: "Status", kind: "status" },
+      { name: "Author", kind: "rich_text" },
+    ],
+    auto: { status: "Status", time: null, deadline: null, description: null },
+    statusOptions: ["To read", "Reading", "Finished"],
+  },
+];
+
 const handlers: Record<string, (args: Args) => unknown> = {
   get_config: () => config,
+  describe_schemas: (args) => {
+    const overrides = args.schemaOverrides ?? {};
+    return demoDataSources.map((db) => {
+      const over = overrides[db.data_source_id] ?? {};
+      const effective = {
+        status: over.status ?? db.auto.status,
+        time: over.time ?? db.auto.time,
+        deadline: over.deadline ?? db.auto.deadline,
+        description: over.description ?? db.auto.description,
+      };
+      const missing = (["status", "time", "deadline", "description"] as const).filter(
+        (role) => !effective[role]
+      );
+      return {
+        data_source_id: db.data_source_id,
+        database_title: db.database_title,
+        title: "Name",
+        status: effective.status,
+        status_options: effective.status ? db.statusOptions : [],
+        time: effective.time,
+        deadline: effective.deadline,
+        description: effective.description,
+        missing,
+        properties: db.properties,
+      };
+    });
+  },
   // Kept in memory so settings round-trip in the browser — saving and
   // reopening settings shows what you chose, as it would in the app.
   save_config_cmd: (args) => {
     config = {
       ...config,
       notion_api_key: args.apiKey ?? config.notion_api_key,
+      enabled_data_sources: args.enabledDataSources ?? config.enabled_data_sources,
+      schema_overrides: args.schemaOverrides ?? config.schema_overrides,
       completion_tone: args.completionTone ?? config.completion_tone,
       startup_position: args.startupPosition ?? config.startup_position,
       global_shortcut: args.globalShortcut ?? config.global_shortcut,

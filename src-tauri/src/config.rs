@@ -1,5 +1,7 @@
+use crate::notion::SchemaOverride;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -53,6 +55,16 @@ pub fn new_account_id() -> String {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     pub notion_api_key: String,
+    /// Which discovered Notion data sources actually feed the task and
+    /// calendar views. Empty means every database shared with the
+    /// integration — the original "just works" behavior — until the user
+    /// narrows it down in settings.
+    #[serde(default)]
+    pub enabled_data_sources: Vec<String>,
+    /// Manual property-role choices, keyed by data source id, layered on top
+    /// of auto-detection for the databases where it guessed wrong.
+    #[serde(default)]
+    pub schema_overrides: HashMap<String, SchemaOverride>,
     #[serde(default = "default_tone")]
     pub completion_tone: String,
     #[serde(default)]

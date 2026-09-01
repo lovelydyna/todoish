@@ -87,8 +87,22 @@ export interface NoteSummary {
   preview: string;
 }
 
+/** A user's manual property-role choices for one Notion data source, layered
+ *  on top of auto-detection. Mirrors notion::SchemaOverride. */
+export interface SchemaOverride {
+  status?: string | null;
+  time?: string | null;
+  deadline?: string | null;
+  description?: string | null;
+}
+
 export interface Config {
   notion_api_key: string;
+  /** Which discovered Notion data sources feed task/calendar. Empty = every
+   *  database shared with the integration. */
+  enabled_data_sources: string[];
+  /** Manual property choices, keyed by data source id. */
+  schema_overrides: Record<string, SchemaOverride>;
   completion_tone: string;
   startup_position: string;
   global_shortcut: string;

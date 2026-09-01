@@ -8,7 +8,7 @@ import { useKeybindings } from "../hooks/useKeybindings";
 import { CalendarSettings } from "../components/CalendarSettings";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { FieldLabel } from "../components/InfoTip";
-import { Item } from "../types";
+import { Item, SchemaOverride } from "../types";
 import {
   Appearance,
   THEMES,
@@ -26,6 +26,10 @@ interface SetupProps {
    *  stale rows until the next 60s sync tick. */
   onCalendarChanged?: () => void;
   initialApiKey?: string;
+  /** Which discovered Notion data sources feed task/calendar. Empty = every
+   *  shared database. */
+  initialEnabledDataSources?: string[];
+  initialSchemaOverrides?: Record<string, SchemaOverride>;
   initialTone?: string;
   initialPosition?: string;
   initialGlobalShortcut?: string;
@@ -47,9 +51,16 @@ const POSITIONS = [
   { value: "center", label: "center" },
 ] as const;
 
+/** Mirrors notion::PropertySummary. */
+interface PropertySummary {
+  name: string;
+  kind: string;
+}
+
 /** Mirrors notion::SchemaReport — which property the app matched to each role,
  *  for one database shared with the integration. */
 interface SchemaReport {
+  data_source_id: string;
   database_title: string;
   title: string;
   status: string | null;
@@ -59,7 +70,18 @@ interface SchemaReport {
   deadline: string | null;
   description: string | null;
   missing: string[];
+  properties: PropertySummary[];
 }
+
+/** Which property kinds a role's dropdown should offer. A plain `select`
+ *  works for status too — that's the pre-Notion-status-type convention the
+ *  backend already falls back to when it auto-detects. */
+const ROLE_KINDS: Record<"status" | "time" | "deadline" | "description", string[]> = {
+  status: ["status", "select"],
+  time: ["date"],
+  deadline: ["date"],
+  description: ["rich_text"],
+};
 
 export type SettingsTab =
   | "calendar"
@@ -80,6 +102,8 @@ export function Setup({
   onCancel,
   onCalendarChanged,
   initialApiKey = "",
+  initialEnabledDataSources = [],
+  initialSchemaOverrides = {},
   initialTone = "bell",
   initialPosition = "",
   initialGlobalShortcut = "CmdOrControl+Shift+T",
@@ -95,6 +119,8 @@ export function Setup({
   const [globalShortcut, setGlobalShortcut] = useState(initialGlobalShortcut);
   const [schemaReports, setSchemaReports] = useState<SchemaReport[] | null>(null);
   const [checking, setChecking] = useState(false);
+  const [enabledDataSources, setEnabledDataSources] = useState<string[]>(initialEnabledDataSources);
+  const [schemaOverrides, setSchemaOverrides] = useState<Record<string, SchemaOverride>>(initialSchemaOverrides);
   const [autostart, setAutostart] = useState(false);
   const [appearance, setAppearance] = useState(() => normalizeAppearance(initialAppearance));
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -134,6 +160,8 @@ export function Setup({
     try {
       await invoke("save_config_cmd", {
         apiKey: apiKey.trim(),
+        enabledDataSources,
+        schemaOverrides,
         completionTone: tone,
         startupPosition: position,
         globalShortcut: globalShortcut.trim(),
@@ -163,13 +191,35 @@ export function Setup({
     setSchemaReports(null);
     try {
       setSchemaReports(
-        await invoke<SchemaReport[]>("describe_schemas", { apiKey: apiKey.trim() })
+        await invoke<SchemaReport[]>("describe_schemas", {
+          apiKey: apiKey.trim(),
+          schemaOverrides,
+        })
       );
     } catch (e) {
       setError(String(e));
     } finally {
       setChecking(false);
     }
+  };
+
+  /** Empty selection means "every shared database" — the first time a
+   *  database is unchecked, that has to seed the list with everything else
+   *  that's currently showing, or unchecking one would silently drop every
+   *  other database too. */
+  const toggleDataSource = (id: string, allIds: string[]) => {
+    setEnabledDataSources((prev) => {
+      const active = prev.length === 0 ? allIds : prev;
+      const next = active.includes(id) ? active.filter((x) => x !== id) : [...active, id];
+      return next.length === allIds.length ? [] : next;
+    });
+  };
+
+  const setOverride = (dataSourceId: string, role: keyof SchemaOverride, value: string) => {
+    setSchemaOverrides((prev) => ({
+      ...prev,
+      [dataSourceId]: { ...prev[dataSourceId], [role]: value || null },
+    }));
   };
 
   const toggleAutostart = async () => {
@@ -270,38 +320,64 @@ export function Setup({
               </div>
             )}
 
-            {schemaReports?.map((report) => (
-              <div key={report.database_title} className="schema-list">
-                <div className="schema-line">
-                  <span className="schema-role">{report.database_title}</span>
-                  <span className="schema-match">
-                    {report.missing.length === 0 ? "all properties matched" : `${report.missing.length} missing`}
-                  </span>
-                </div>
-                {([
-                  ["name", report.title],
-                  ["status", report.status],
-                  ["date", report.time],
-                  ["deadline", report.deadline],
-                  ["description", report.description],
-                ] as const).map(([role, matched]) => (
-                  <div key={role} className="schema-line">
-                    <span className="schema-role">{role}</span>
-                    <span className={`schema-match${matched ? "" : " schema-match--missing"}`}>
-                      {matched ?? "not found"}
-                    </span>
-                  </div>
-                ))}
-                {report.status_options.length > 0 && (
+            {schemaReports?.map((report) => {
+              const allIds = schemaReports.map((r) => r.data_source_id);
+              const enabled = enabledDataSources.length === 0 || enabledDataSources.includes(report.data_source_id);
+              return (
+                <div key={report.data_source_id} className="schema-list">
                   <div className="schema-line">
-                    <span className="schema-role">stages</span>
+                    <label className="schema-role schema-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() => toggleDataSource(report.data_source_id, allIds)}
+                      />
+                      {" "}{report.database_title}
+                    </label>
                     <span className="schema-match">
-                      {report.status_options.join(" → ")}
+                      {report.missing.length === 0 ? "all properties matched" : `${report.missing.length} missing`}
                     </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {enabled && (
+                    <>
+                      <div className="schema-line">
+                        <span className="schema-role">name</span>
+                        <span className="schema-match">{report.title}</span>
+                      </div>
+                      {(["status", "time", "deadline", "description"] as const).map((role) => {
+                        const matched = report[role];
+                        const options = report.properties.filter((p) => ROLE_KINDS[role].includes(p.kind));
+                        return (
+                          <div key={role} className="schema-line">
+                            <span className="schema-role">{role === "time" ? "date" : role}</span>
+                            <select
+                              className="schema-match-select"
+                              value={matched ?? ""}
+                              onChange={(e) => setOverride(report.data_source_id, role, e.target.value)}
+                            >
+                              <option value="">not found</option>
+                              {options.map((p) => (
+                                <option key={p.name} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                      {report.status_options.length > 0 && (
+                        <div className="schema-line">
+                          <span className="schema-role">stages</span>
+                          <span className="schema-match">
+                            {report.status_options.join(" → ")}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
 

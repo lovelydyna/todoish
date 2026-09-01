@@ -87,7 +87,12 @@ pub fn find_account<'a>(config: &'a Config, account_id: &str) -> Result<&'a Goog
 /// Notion first, then every linked Google account. Notion is required; each
 /// Google account is best-effort and reported independently.
 pub async fn fetch_all(config: &Config) -> Result<SyncResult, String> {
-    let mut items = notion::fetch_items(&config.notion_api_key).await?;
+    let mut items = notion::fetch_items(
+        &config.notion_api_key,
+        &config.schema_overrides,
+        &config.enabled_data_sources,
+    )
+    .await?;
     let mut warnings = Vec::new();
 
     for account in &config.google_accounts {

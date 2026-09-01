@@ -2104,6 +2104,25 @@ input {
 .schema-match { color: var(--text); }
 .schema-match--missing { color: var(--accent-red); }
 
+.schema-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: unset;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.schema-match-select {
+  background: var(--bg-inset, var(--bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
 /* ─── Notion Calendar ────────────────────────────────────── */
 /* Rows from Notion and from every linked Google calendar sit in the same
    list, so each gets a small dot in its own colour — Notion is one neutral

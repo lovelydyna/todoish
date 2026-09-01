@@ -1,7 +1,8 @@
 use crate::config::{load_config, new_account_id, save_config, Config, GoogleAccount, SyncedCalendar};
 use crate::gcal;
 use crate::merge::{self, SyncResult};
-use crate::notion::{self, Item, SOURCE_GOOGLE};
+use crate::notion::{self, Item, SchemaOverride, SOURCE_GOOGLE};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
@@ -38,6 +39,8 @@ pub async fn get_config() -> Option<Config> {
 #[allow(clippy::too_many_arguments)]
 pub async fn save_config_cmd(
     api_key: String,
+    enabled_data_sources: Vec<String>,
+    schema_overrides: HashMap<String, SchemaOverride>,
     completion_tone: String,
     startup_position: String,
     global_shortcut: String,
@@ -52,6 +55,8 @@ pub async fn save_config_cmd(
     let google_accounts = load_config().map(|c| c.google_accounts).unwrap_or_default();
     save_config(&Config {
         notion_api_key: api_key,
+        enabled_data_sources,
+        schema_overrides,
         completion_tone,
         startup_position,
         global_shortcut,
@@ -85,10 +90,15 @@ pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), S
 }
 
 /// Checks every database shared with the integration and reports which
-/// property each one matched to each role.
+/// property each one matched to each role. `schema_overrides` is passed
+/// fresh from the form rather than read off disk, the same way `api_key`
+/// is — so a still-unsaved edit shows its effect immediately.
 #[tauri::command]
-pub async fn describe_schemas(api_key: String) -> Result<Vec<notion::SchemaReport>, String> {
-    notion::describe_schemas(&api_key).await
+pub async fn describe_schemas(
+    api_key: String,
+    schema_overrides: HashMap<String, SchemaOverride>,
+) -> Result<Vec<notion::SchemaReport>, String> {
+    notion::describe_schemas(&api_key, &schema_overrides).await
 }
 
 #[tauri::command]
@@ -126,7 +136,14 @@ pub async fn cycle_status(item_id: String, cache: State<'_, ItemCache>) -> Resul
             .data_source_id
             .as_deref()
             .ok_or("This item has no database — try refreshing.")?;
-        notion::set_item_status(&config.notion_api_key, data_source_id, &item_id, next).await?;
+        notion::set_item_status(
+            &config.notion_api_key,
+            &config.schema_overrides,
+            data_source_id,
+            &item_id,
+            next,
+        )
+        .await?;
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -189,6 +206,8 @@ pub async fn create_item(
     } else {
         notion::create_item(
             &config.notion_api_key,
+            &config.schema_overrides,
+            &config.enabled_data_sources,
             &name,
             start.as_deref(),
             end.as_deref(),
@@ -241,6 +260,7 @@ pub async fn update_item_cmd(
             .ok_or("This item has no database — try refreshing.")?;
         notion::update_item(
             &config.notion_api_key,
+            &config.schema_overrides,
             data_source_id,
             &item_id,
             &name,

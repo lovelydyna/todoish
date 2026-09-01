@@ -132,6 +132,8 @@ export default function App() {
           onCancel={cancelSettings}
           onCalendarChanged={refresh}
           initialApiKey={currentConfig?.notion_api_key ?? ""}
+          initialEnabledDataSources={currentConfig?.enabled_data_sources ?? []}
+          initialSchemaOverrides={currentConfig?.schema_overrides ?? {}}
           initialTone={currentConfig?.completion_tone ?? "bell"}
           initialPosition={currentConfig?.startup_position ?? ""}
           initialGlobalShortcut={currentConfig?.global_shortcut ?? "CmdOrControl+Shift+T"}
