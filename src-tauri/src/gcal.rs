@@ -114,7 +114,7 @@ pub async fn access_token(account: &GoogleAccount) -> Result<String, String> {
         .form(&form)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Google Calendar", e))?;
 
     let status = response.status();
     let body: Value = response.json().await.map_err(|e| e.to_string())?;
@@ -301,7 +301,7 @@ pub async fn connect(client_id: &str, client_secret: &str) -> Result<Connection,
         .form(&form)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Google Calendar", e))?;
 
     let status = response.status();
     let body: Value = response.json().await.map_err(|e| e.to_string())?;
@@ -332,7 +332,7 @@ async fn fetch_account(access_token: &str) -> Result<String, String> {
         .bearer_auth(access_token)
         .send()
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| crate::http::describe_send_error("Google Calendar", e))?
         .json()
         .await
         .map_err(|e| e.to_string())?;
@@ -686,7 +686,7 @@ pub async fn delete_event(
         .bearer_auth(&token)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Google Calendar", e))?;
 
     // 410 Gone means someone else already deleted it — the caller wanted it
     // gone and it is gone, so that is not a failure to report.
@@ -720,12 +720,12 @@ async fn get(url: &str, token: &str) -> Result<Value, String> {
         .bearer_auth(token)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Google Calendar", e))?;
 
     let status = response.status();
     let body: Value = response.json().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(describe_error(&body));
+        return Err(describe_error(status, &body));
     }
     Ok(body)
 }
@@ -740,23 +740,36 @@ async fn send(
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Google Calendar", e))?;
 
     let status = response.status();
     let body: Value = response.json().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(describe_error(&body));
+        return Err(describe_error(status, &body));
     }
     Ok(body)
 }
 
-/// Google nests the useful part of an error two levels down.
-fn describe_error(body: &Value) -> String {
+/// Google nests the useful part of an error two levels down. A 401 always
+/// means the stored grant itself is the problem — often a Google Cloud
+/// OAuth client still in "Testing" mode, whose refresh tokens expire after
+/// a week — so it gets a pointed hint rather than just the raw message,
+/// which otherwise reads as a mysterious one-off rather than something with
+/// an actual fix.
+fn describe_error(status: reqwest::StatusCode, body: &Value) -> String {
     let message = body["error"]["message"]
         .as_str()
         .or_else(|| body["error_description"].as_str())
         .unwrap_or("unknown error");
-    format!("Google Calendar error: {message}")
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        format!(
+            "Google Calendar error: {message} — this account's connection has expired; \
+             reconnect it in Settings → Calendar (if the OAuth client is still in \"Testing\" \
+             mode in Google Cloud Console, this happens roughly weekly)."
+        )
+    } else {
+        format!("Google Calendar error: {message}")
+    }
 }
 
 #[cfg(test)]
@@ -907,6 +920,17 @@ mod tests {
     #[test]
     fn googles_nested_error_message_is_surfaced() {
         let body = json!({ "error": { "code": 404, "message": "Not Found" } });
-        assert_eq!(describe_error(&body), "Google Calendar error: Not Found");
+        assert_eq!(
+            describe_error(reqwest::StatusCode::NOT_FOUND, &body),
+            "Google Calendar error: Not Found"
+        );
+    }
+
+    #[test]
+    fn a_401_gets_a_reconnect_hint_rather_than_just_the_raw_message() {
+        let body = json!({ "error": { "message": "Request had invalid authentication credentials." } });
+        let message = describe_error(reqwest::StatusCode::UNAUTHORIZED, &body);
+        assert!(message.contains("Request had invalid authentication credentials."));
+        assert!(message.contains("reconnect it in Settings"));
     }
 }

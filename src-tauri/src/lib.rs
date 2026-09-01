@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod gcal;
+mod http;
 mod ics;
 mod merge;
 mod notes;

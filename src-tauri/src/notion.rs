@@ -319,11 +319,12 @@ async fn fetch_schema(api_key: &str, data_source_id: &str) -> Result<Schema, Str
     )
     .send()
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("Notion API error reading schema: {}", text));
+        return Err(describe_api_error(status, &text));
     }
 
     let body: Value = response.json().await.map_err(|e| e.to_string())?;
@@ -349,7 +350,7 @@ async fn lookup_data_source(api_key: &str, id: &str) -> Result<String, String> {
     )
     .send()
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if response.status().is_success() {
         let body: Value = response.json().await.map_err(|e| e.to_string())?;
@@ -373,7 +374,7 @@ async fn lookup_data_source(api_key: &str, id: &str) -> Result<String, String> {
     )
     .send()
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if probe.status().is_success() {
         return Ok(id.to_string());
@@ -406,6 +407,23 @@ where
         }
     }
     Err(last_err)
+}
+
+/// A 401 here almost always means the connection token itself is the
+/// problem — revoked, retyped wrong, or the integration was removed from
+/// the workspace — so it gets a pointed hint rather than just Notion's raw
+/// error body, which otherwise reads as a one-off glitch rather than
+/// something with an actual fix.
+fn describe_api_error(status: reqwest::StatusCode, text: &str) -> String {
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        format!(
+            "Notion API error: {text} — check the connection token in Settings; it's revoked if \
+             the integration was removed from the workspace or deleted in Notion's own integration \
+             settings."
+        )
+    } else {
+        format!("Notion API error: {text}")
+    }
 }
 
 /// Where a row came from, and therefore where writes to it go back to.
@@ -621,11 +639,12 @@ async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, S
             .json(&body)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(format!("Notion API error: {}", text));
+            return Err(describe_api_error(status, &text));
         }
 
         let data: NotionQueryResponse = response.json().await.map_err(|e| e.to_string())?;
@@ -675,11 +694,12 @@ pub async fn create_item(
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("Notion API error: {}", text));
+        return Err(describe_api_error(status, &text));
     }
 
     let page: NotionPage = response.json().await.map_err(|e| e.to_string())?;
@@ -761,11 +781,12 @@ async fn patch_page(api_key: &str, page_id: &str, body: Value) -> Result<(), Str
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("Notion API error: {}", text));
+        return Err(describe_api_error(status, &text));
     }
 
     Ok(())
