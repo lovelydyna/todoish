@@ -211,6 +211,9 @@ describe("isDeadlinePassed", () => {
   it("is true only once the deadline is behind us", () => {
     expect(isDeadlinePassed({ ...base, deadline: "2026-04-19" })).toBe(true);
     expect(isDeadlinePassed({ ...base, deadline: "2026-04-21" })).toBe(false);
+    // Due today (date only) isn't late until the day is over.
+    expect(isDeadlinePassed({ ...base, deadline: "2026-04-20" })).toBe(false);
+    expect(isDeadlinePassed({ ...base, deadline: "2026-04-20T09:00:00" })).toBe(true);
     expect(isDeadlinePassed(base)).toBe(false);
   });
 });

@@ -908,14 +908,21 @@ select:focus-visible {
   -webkit-user-select: text;
 }
 
-.event-time {
-  flex-shrink: 0;
-  width: 100px;
+/* Calendar rows: name on top, time and due underneath, circle level with
+   the name (as in Reminders). */
+.event-row-main { align-items: flex-start; padding: 8px 0; }
+.event-row-main .statusbox { margin-top: 2px; }
+.event-text { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+.event-name { line-height: 22px; }
+.event-meta {
   font-size: 13px;
-  color: var(--text-dim);
+  color: var(--text-faint);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
+.event-meta::first-letter { text-transform: uppercase; }
 
 /* ─── Status checkbox ────────────────────────────────────── */
 /* A ring in the group's colour (Todoist's priority circle, keyed to time

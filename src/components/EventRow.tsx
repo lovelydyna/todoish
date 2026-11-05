@@ -28,13 +28,20 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
       onClick={onClick}
       onContextMenu={handleContextMenu}
     >
+      {/* Read top to bottom down one edge: circle, name, then the details
+          under the name, so nothing sits in a column of its own. */}
       <div className="event-row-main">
         <StatusBox status={event.status} onCycle={onCycle} />
-        <span className="event-time">{time}</span>
-        <span className="event-name">{event.name}</span>
-        {deadline && (
-          <span className={`due${overdue ? " due--overdue" : ""}`}>{deadline}</span>
-        )}
+        <div className="event-text">
+          <span className="event-name">{event.name}</span>
+          {(time || deadline) && (
+            <span className="event-meta">
+              {time}
+              {time && deadline && " · "}
+              {deadline && <span className={overdue ? "due--overdue" : undefined}>{deadline}</span>}
+            </span>
+          )}
+        </div>
       </div>
       {expanded && event.description && (
         <div className="row-description">{event.description}</div>
