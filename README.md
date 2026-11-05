@@ -24,18 +24,6 @@ A small macOS window that shows tasks from your Notion databases, sorted by when
 2. Share your database with it (database `···` → Connections).
 3. Paste the token and press **Check**. Your shared databases show up and their properties are matched for you; change any match in Settings → Notion.
 
-## Keys
-
-| Key | Action |
-|---|---|
-| `↑` `↓` or `j` `k` | move |
-| `space` | change status |
-| `n` / `e` / `d` / `u` | new / edit / delete / undo |
-| `c` | tasks ⇄ calendar |
-| `m` | month view |
-| `w` | notes |
-| `,` / `?` | settings / all shortcuts |
-
 ## Build from source
 
 Needs [Rust](https://rustup.rs) and [Node.js](https://nodejs.org) 18+.
