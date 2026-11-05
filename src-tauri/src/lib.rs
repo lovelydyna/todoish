@@ -99,6 +99,7 @@ pub fn run() {
             commands::open_in_notion,
             commands::save_note,
             commands::list_notes,
+            commands::make_note_dir,
             commands::read_note,
             commands::update_note,
             commands::delete_note,

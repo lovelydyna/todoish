@@ -22,13 +22,15 @@ export interface Item {
   data_source_id: string | null;
 }
 
-/** One saved note, for the notes tab in settings. Mirrors notes::NoteSummary. */
+/** One entry in a notes folder. Mirrors notes::NoteSummary. */
 export interface NoteSummary {
+  /** Path relative to the notes root, e.g. "work/idea.md" or "work". */
   filename: string;
   title: string;
   /** Unix seconds. */
   modified: number;
   preview: string;
+  is_dir: boolean;
 }
 
 /** A user's manual property-role choices for one Notion data source, layered

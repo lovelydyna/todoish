@@ -112,20 +112,26 @@ let notes: DemoNote[] = [
     modified: Date.now() - 2 * 60 * 60 * 1000,
   },
   {
-    filename: "grant-app-notes.md",
+    filename: "research/grant-app-notes.md",
     content: "grant app notes\n\n- budget justification needs the equipment quote from last month\n- ask supervisor about the timeline section",
     modified: Date.now() - 26 * 60 * 60 * 1000,
   },
 ];
 
+/** Folders, by path relative to the notes root. */
+const noteDirs = new Set<string>(["research", "research/papers", "personal"]);
+
+const parentOf = (path: string) => path.split("/").slice(0, -1).join("/");
+const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
+
 /** Mirrors the backend's collision handling: a name already in use gets a
  *  numeric suffix rather than overwriting. */
-function uniqueNoteFilename(name: string): string {
+function uniqueNoteFilename(name: string, dir: string): string {
   const base = name.trim().replace(/[/\\]/g, "-").slice(0, 120) || "untitled";
-  let filename = `${base}.md`;
+  let filename = join(dir, `${base}.md`);
   let attempt = 2;
   while (notes.some((n) => n.filename === filename)) {
-    filename = `${base}-${attempt}.md`;
+    filename = join(dir, `${base}-${attempt}.md`);
     attempt += 1;
   }
   return filename;
@@ -249,20 +255,34 @@ const handlers: Record<string, (args: Args) => unknown> = {
   set_autostart: () => null,
   quit_app: () => null,
 
-  save_note: ({ name, content }) => {
-    const filename = uniqueNoteFilename(name);
+  save_note: ({ name, content, dir }) => {
+    const filename = uniqueNoteFilename(name, dir ?? "");
     notes.push({ filename, content: content ?? "", modified: Date.now() });
     return filename;
   },
-  list_notes: () =>
-    [...notes]
+  make_note_dir: ({ path }) => {
+    const parts = String(path).split("/").filter(Boolean);
+    parts.forEach((_, i) => noteDirs.add(parts.slice(0, i + 1).join("/")));
+    return parts.join("/");
+  },
+  list_notes: ({ dir = "" } = {}) => [
+    ...[...noteDirs]
+      .filter((d) => parentOf(d) === dir)
+      .sort()
+      .map((d) => ({
+        filename: d, title: d.split("/").pop(), modified: 0, preview: "", is_dir: true,
+      })),
+    ...notes
+      .filter((n) => parentOf(n.filename) === dir)
       .sort((a, b) => b.modified - a.modified)
       .map((n) => ({
         filename: n.filename,
-        title: n.filename.replace(/\.md$/, ""),
+        title: n.filename.split("/").pop()!.replace(/\.md$/, ""),
         modified: Math.floor(n.modified / 1000),
         preview: n.content.split("\n").find((l) => l.trim())?.trim().slice(0, 140) ?? "",
+        is_dir: false,
       })),
+  ],
   read_note: ({ filename }) => notes.find((n) => n.filename === filename)?.content ?? "",
   update_note: ({ filename, content }) => {
     const note = notes.find((n) => n.filename === filename);
@@ -270,6 +290,13 @@ const handlers: Record<string, (args: Args) => unknown> = {
     return null;
   },
   delete_note: ({ filename }) => {
+    if (noteDirs.has(filename)) {
+      const busy = notes.some((n) => n.filename.startsWith(`${filename}/`))
+        || [...noteDirs].some((d) => d.startsWith(`${filename}/`));
+      if (busy) throw "That folder isn't empty — delete its notes first.";
+      noteDirs.delete(filename);
+      return null;
+    }
     notes = notes.filter((n) => n.filename !== filename);
     return null;
   },
@@ -296,7 +323,8 @@ export function installTauriMock(): void {
         console.warn(`[tauri-mock] unhandled command: ${cmd}`);
         return Promise.resolve(null);
       }
-      return Promise.resolve(handler(args));
+      // A handler that throws becomes a rejected promise, like a backend Err.
+      return new Promise((resolve) => resolve(handler(args)));
     },
   };
 

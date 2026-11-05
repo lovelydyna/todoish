@@ -245,14 +245,20 @@ pub async fn open_in_notion(item_id: String, cache: State<'_, ItemCache>) -> Res
 /// Saves a new quick note to `~/.todoish/notes/`. Returns the filename it
 /// landed under, in case a name collision changed it.
 #[tauri::command]
-pub async fn save_note(name: String, content: String) -> Result<String, String> {
-    crate::notes::save_note(&name, &content)
+pub async fn save_note(name: String, content: String, dir: Option<String>) -> Result<String, String> {
+    crate::notes::save_note(&name, &content, dir.as_deref())
 }
 
-/// Every saved note, for the notes tab in settings.
+/// One notes folder's contents (the root when `dir` is omitted).
 #[tauri::command]
-pub async fn list_notes() -> Result<Vec<crate::notes::NoteSummary>, String> {
-    crate::notes::list_notes()
+pub async fn list_notes(dir: Option<String>) -> Result<Vec<crate::notes::NoteSummary>, String> {
+    crate::notes::list_notes(dir.as_deref())
+}
+
+/// Creates a folder under the notes root; returns its relative path.
+#[tauri::command]
+pub async fn make_note_dir(path: String) -> Result<String, String> {
+    crate::notes::make_dir(&path)
 }
 
 #[tauri::command]

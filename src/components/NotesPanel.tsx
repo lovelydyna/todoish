@@ -1,20 +1,19 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { NoteSummary } from "../types";
 import { WindowControls } from "./WindowControls";
 import { IconTag } from "./IconTag";
 import { ViewSwitch } from "./ViewSwitch";
-import { EyeIcon, GearIcon, ListIcon, PencilIcon, PlusIcon } from "./Icons";
-import { useKeyboard } from "../hooks/useKeyboard";
+import { GearIcon } from "./Icons";
 import { useKeybindings } from "../hooks/useKeybindings";
+import { normalKey, lineCol, VimBuffer } from "../lib/vim";
+import { renderMarkdown } from "../lib/markdown";
 
-/** "3:14p" today, "Tue" this week, "Aug 12" further back — same grain as the
- *  rest of the app's date labels, just applied to a note's last-edit time. */
+/** "3:14p" today, "Tue" this week, "Aug 12" further back. */
 function relativeStamp(unixSeconds: number): string {
+  if (!unixSeconds) return "";
   const d = new Date(unixSeconds * 1000);
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) {
+  if (d.toDateString() === new Date().toDateString()) {
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
       .replace(" AM", "a").replace(" PM", "p");
   }
@@ -23,146 +22,31 @@ function relativeStamp(unixSeconds: number): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-/** A note's content is stored as one plain-text file with no title field of
- *  its own — the first line *is* the title, Bear/Apple-Notes style. This
- *  keeps the filename an internal storage handle only, so retitling a note
- *  never needs a rename on disk. */
-function splitTitleBody(content: string): { title: string; body: string } {
-  const idx = content.indexOf("\n");
-  if (idx === -1) return { title: content, body: "" };
-  return { title: content.slice(0, idx), body: content.slice(idx + 1) };
-}
+const parentDir = (path: string) => path.split("/").slice(0, -1).join("/");
 
-function joinTitleBody(title: string, body: string): string {
-  return body ? `${title}\n${body}` : title;
-}
-
-/** The browse list shows what the note actually says, not its filename —
- *  `preview` is already the first non-empty line of content. */
-function displayTitle(note: NoteSummary): string {
-  return note.preview.trim() || "Untitled";
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** Inline markers only — the caller has already stripped any block-level
- *  prefix (heading hash, list bullet, blockquote arrow) off the line. */
-function renderInline(escaped: string): string {
-  return escaped
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-    .replace(/&lt;u&gt;([\s\S]*?)&lt;\/u&gt;/g, "<u>$1</u>")
-    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>")
-    .replace(/\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-}
-
-/** Renders exactly the markdown subset the formatting toolbar produces —
- *  headings, bold/italic/strike/underline/code, links, code blocks,
- *  blockquotes, and the three list flavors — not general-purpose markdown. */
-function renderMarkdown(source: string): string {
-  const lines = escapeHtml(source).split("\n");
-  const html: string[] = [];
-  let list: "ul" | "ol" | "check" | null = null;
-  let inCode = false;
-  const codeLines: string[] = [];
-
-  const closeList = () => {
-    if (list === "ol") html.push("</ol>");
-    else if (list) html.push("</ul>");
-    list = null;
-  };
-
-  for (const raw of lines) {
-    if (raw.trim() === "```") {
-      if (inCode) {
-        html.push(`<pre><code>${codeLines.join("\n")}</code></pre>`);
-        codeLines.length = 0;
-      }
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) { codeLines.push(raw); continue; }
-
-    const heading = raw.match(/^(#{1,3})\s+(.*)$/);
-    const check = raw.match(/^-\s\[( |x)\]\s(.*)$/);
-    const bullet = raw.match(/^-\s(.*)$/);
-    const ordered = raw.match(/^\d+\.\s(.*)$/);
-    const quote = raw.match(/^&gt;\s?(.*)$/);
-
-    if (heading) {
-      closeList();
-      const level = heading[1].length;
-      html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
-    } else if (check) {
-      if (list !== "check") { closeList(); html.push('<ul class="notes-preview-checklist">'); list = "check"; }
-      const checked = check[1] === "x";
-      html.push(`<li><input type="checkbox" disabled ${checked ? "checked" : ""} />${renderInline(check[2])}</li>`);
-    } else if (bullet) {
-      if (list !== "ul") { closeList(); html.push("<ul>"); list = "ul"; }
-      html.push(`<li>${renderInline(bullet[1])}</li>`);
-    } else if (ordered) {
-      if (list !== "ol") { closeList(); html.push("<ol>"); list = "ol"; }
-      html.push(`<li>${renderInline(ordered[1])}</li>`);
-    } else if (quote) {
-      closeList();
-      html.push(`<blockquote>${renderInline(quote[1])}</blockquote>`);
-    } else if (raw.trim() === "") {
-      closeList();
-    } else {
-      closeList();
-      html.push(`<p>${renderInline(raw)}</p>`);
-    }
+/** Resolves a `:cd` argument against the current folder, terminal-style. */
+function resolveDir(cwd: string, arg: string): string {
+  if (!arg || arg === "~" || arg === "/") return "";
+  const parts = arg.startsWith("/") ? [] : cwd.split("/").filter(Boolean);
+  for (const p of arg.split("/").filter(Boolean)) {
+    if (p === "..") parts.pop();
+    else if (p !== ".") parts.push(p);
   }
-  closeList();
-  if (inCode && codeLines.length) html.push(`<pre><code>${codeLines.join("\n")}</code></pre>`);
-
-  return html.join("\n");
+  return parts.join("/");
 }
 
-interface Selection {
-  value: string;
-  start: number;
-  end: number;
-}
-
-/** Wraps the current selection in a marker pair — `**bold**`, `*italic*`,
- *  etc. With nothing selected, the markers land around the cursor so typing
- *  continues right inside them. */
-function wrapSelection({ value, start, end }: Selection, before: string, after: string = before): Selection {
-  const selected = value.slice(start, end);
-  return {
-    value: value.slice(0, start) + before + selected + after + value.slice(end),
-    start: start + before.length,
-    end: start + before.length + selected.length,
-  };
-}
-
-/** Prefixes every line the selection touches — used for lists and quotes,
- *  where the marker belongs at the start of each line, not around the text. */
-function prefixLines({ value, start, end }: Selection, makePrefix: (lineIndex: number) => string): Selection {
-  const lineStart = value.lastIndexOf("\n", start - 1) + 1;
-  const nextBreak = value.indexOf("\n", end);
-  const lineEnd = nextBreak === -1 ? value.length : nextBreak;
-  const block = value.slice(lineStart, lineEnd);
-  const lines = block.length ? block.split("\n") : [""];
-  const prefixed = lines.map((line, i) => makePrefix(i) + line).join("\n");
-  return {
-    value: value.slice(0, lineStart) + prefixed + value.slice(lineEnd),
-    start: lineStart,
-    end: lineStart + prefixed.length,
-  };
+/** A readable default name for a quick note: "2026-11-04 1903". */
+function stampName(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 
 const AUTOSAVE_DELAY = 600;
+type Mode = "normal" | "insert";
 
 interface NotesPanelProps {
-  /** Skip reopening the last note and start a fresh one instead. */
+  /** Start on a fresh note rather than the file browser. */
   startNew?: boolean;
   onHome: () => void;
   onCalendar: () => void;
@@ -170,239 +54,322 @@ interface NotesPanelProps {
 }
 
 /**
- * A single-note writing surface: title up top, body below, autosaving a
- * short beat after you stop typing. Other notes live behind the browse
- * icon rather than in a permanent side list — this is a page you write on,
- * not a filing cabinet.
+ * Notes as a tiny terminal: a folder listing you move through with vim keys
+ * (j/k, l to open, h to go up), a modal editor for the note itself, and a
+ * status line at the bottom that doubles as the `:` command line.
+ *
+ * Notes still autosave a beat after you stop typing, so `:w` is a
+ * convenience rather than the only thing standing between you and lost text.
  */
 export function NotesPanel({ startNew, onHome, onCalendar, onSettings }: NotesPanelProps) {
   const { bindings } = useKeybindings();
-  const [notes, setNotes] = useState<NoteSummary[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [loadingList, setLoadingList] = useState(true);
-  const [loadingContent, setLoadingContent] = useState(false);
-  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [browsing, setBrowsing] = useState(false);
-  const [formatting, setFormatting] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
+
+  // ── Browser state ──
+  const [cwd, setCwd] = useState("");
+  const [entries, setEntries] = useState<NoteSummary[]>([]);
+  const [row, setRow] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  // ── Editor state ──
+  const [open, setOpen] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [mode, setMode] = useState<Mode>("normal");
+  const [preview, setPreview] = useState(false);
+  const register = useRef("");
+  const pendingKey = useRef("");
+  const undoStack = useRef<{ text: string; cursor: number }[]>([]);
+
+  // ── Status / command line ──
+  const [command, setCommand] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<NoteSummary | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  const browserRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const commandRef = useRef<HTMLInputElement>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave = useRef<{ filename: string; content: string } | null>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const browseRef = useRef<HTMLDivElement>(null);
 
-  const loadList = useCallback(async () => {
+  const say = (text: string, error = false) => setMessage({ text, error });
+
+  // Rows as shown, with "../" leading whenever we're inside a folder.
+  const rows = useMemo<(NoteSummary | "..")[]>(
+    () => (cwd ? ["..", ...entries] : entries),
+    [cwd, entries]
+  );
+
+  const loadDir = useCallback(async (dir: string, select?: string) => {
+    setLoading(true);
     try {
-      const list = await invoke<NoteSummary[]>("list_notes");
-      setNotes(list);
+      const list = await invoke<NoteSummary[]>("list_notes", { dir });
+      setCwd(dir);
+      setEntries(list);
+      const idx = select ? list.findIndex((e) => e.filename === select) : -1;
+      setRow(idx >= 0 ? idx + (dir ? 1 : 0) : 0);
       return list;
     } catch (e) {
-      setError(String(e));
+      say(String(e), true);
       return [];
     } finally {
-      setLoadingList(false);
+      setLoading(false);
     }
   }, []);
 
-  const openNote = useCallback(async (filename: string) => {
-    setSelected(filename);
-    setPreviewing(false);
-    setLoadingContent(true);
-    setError(null);
-    try {
-      const content = await invoke<string>("read_note", { filename });
-      const split = splitTitleBody(content);
-      setTitle(split.title);
-      setBody(split.body);
-      setStatus("idle");
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoadingContent(false);
-    }
-  }, []);
-
-  // Closes the browse dropdown on an outside click or Escape.
-  useEffect(() => {
-    if (!browsing) return;
-    const onDown = (e: MouseEvent) => {
-      if (browseRef.current && !browseRef.current.contains(e.target as Node)) setBrowsing(false);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBrowsing(false); };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [browsing]);
-
-  /** Flushes a still-pending autosave immediately — called before switching
-   *  notes or unmounting, so a note never loses its last half-second of
-   *  typing to a debounce that never got to fire. */
+  // ── Saving ──
   const flushPending = useCallback(async () => {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     const pending = pendingSave.current;
-    if (!pending) return;
+    if (!pending) return true;
     pendingSave.current = null;
     try {
       await invoke("update_note", pending);
-      setNotes((prev) =>
-        prev.map((n) =>
-          n.filename === pending.filename
-            ? { ...n, preview: pending.content.split("\n").find((l) => l.trim())?.trim().slice(0, 140) ?? "" }
-            : n
-        )
-      );
+      setDirty(false);
+      return true;
     } catch (e) {
-      setError(String(e));
+      say(String(e), true);
+      return false;
     }
   }, []);
 
   useEffect(() => () => { flushPending(); }, [flushPending]);
 
-  const scheduleSave = useCallback((nextTitle: string, nextBody: string) => {
-    if (!selected) return;
-    setStatus("saving");
-    pendingSave.current = { filename: selected, content: joinTitleBody(nextTitle, nextBody) };
+  const changeText = useCallback((next: string) => {
+    setText(next);
+    if (!open) return;
+    setDirty(true);
+    pendingSave.current = { filename: open, content: next };
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(async () => {
-      await flushPending();
-      setStatus("saved");
-    }, AUTOSAVE_DELAY);
-  }, [selected, flushPending]);
+    autosaveTimer.current = setTimeout(flushPending, AUTOSAVE_DELAY);
+  }, [open, flushPending]);
 
-  const handleTitleChange = (value: string) => {
-    setTitle(value);
-    scheduleSave(value, body);
-  };
-
-  const handleBodyChange = (value: string) => {
-    setBody(value);
-    scheduleSave(title, value);
-  };
-
-  // After a formatting button rewrites the body, the selection has to be
-  // restored on the next render — a controlled textarea's cursor snaps to
-  // the end otherwise, undoing the point of wrapping just the selected text.
-  const pendingSelection = useRef<{ start: number; end: number } | null>(null);
-  useEffect(() => {
-    const pending = pendingSelection.current;
-    if (!pending || !bodyRef.current) return;
-    bodyRef.current.focus();
-    bodyRef.current.setSelectionRange(pending.start, pending.end);
-    pendingSelection.current = null;
-  }, [body]);
-
-  const applyFormat = (transform: (sel: Selection) => Selection) => {
-    const el = bodyRef.current;
-    if (!el) return;
-    const result = transform({ value: body, start: el.selectionStart, end: el.selectionEnd });
-    pendingSelection.current = { start: result.start, end: result.end };
-    handleBodyChange(result.value);
-  };
-
-  const insertLink = (sel: Selection): Selection => {
-    const selected = sel.value.slice(sel.start, sel.end);
-    const before = `[${selected || "link"}](`;
-    const url = "url";
-    const value = sel.value.slice(0, sel.start) + before + url + ")" + sel.value.slice(sel.end);
-    const urlStart = sel.start + before.length;
-    return { value, start: urlStart, end: urlStart + url.length };
-  };
-
-  const renderedBody = useMemo(() => renderMarkdown(body), [body]);
-
-  const formatButtons: { key: string; label: string; title: string; onClick: () => void }[] = [
-    { key: "h",     label: "H",   title: "heading",       onClick: () => applyFormat((s) => prefixLines(s, () => "## ")) },
-    { key: "b",     label: "B",   title: "bold",           onClick: () => applyFormat((s) => wrapSelection(s, "**")) },
-    { key: "i",     label: "I",   title: "italic",         onClick: () => applyFormat((s) => wrapSelection(s, "*")) },
-    { key: "s",     label: "S",   title: "strikethrough",  onClick: () => applyFormat((s) => wrapSelection(s, "~~")) },
-    { key: "u",     label: "U",   title: "underline",      onClick: () => applyFormat((s) => wrapSelection(s, "<u>", "</u>")) },
-    { key: "code",  label: "</>", title: "inline code",    onClick: () => applyFormat((s) => wrapSelection(s, "`")) },
-    { key: "link",  label: "🔗",  title: "link",           onClick: () => applyFormat(insertLink) },
-    { key: "block", label: "{ }", title: "code block",     onClick: () => applyFormat((s) => wrapSelection(s, "```\n", "\n```")) },
-    { key: "quote", label: "❝",  title: "quote",          onClick: () => applyFormat((s) => prefixLines(s, () => "> ")) },
-    { key: "ol",    label: "1.", title: "numbered list",  onClick: () => applyFormat((s) => prefixLines(s, (i) => `${i + 1}. `)) },
-    { key: "ul",    label: "•",  title: "bullet list",    onClick: () => applyFormat((s) => prefixLines(s, () => "- ")) },
-    { key: "check", label: "☑",  title: "checklist",      onClick: () => applyFormat((s) => prefixLines(s, () => "- [ ] ")) },
-  ];
-
-  const selectNote = async (filename: string) => {
-    setBrowsing(false);
-    if (filename === selected) return;
+  // ── Opening and closing notes ──
+  const openNote = useCallback(async (filename: string, startInsert = false) => {
     await flushPending();
-    await openNote(filename);
-  };
-
-  const createNote = useCallback(async () => {
-    setBrowsing(false);
-    await flushPending();
-    setError(null);
     try {
-      const filename = await invoke<string>("save_note", { name: `untitled-${Date.now()}`, content: "" });
-      await loadList();
-      await openNote(filename);
-      titleRef.current?.focus();
+      const content = await invoke<string>("read_note", { filename });
+      setOpen(filename);
+      setText(content);
+      setCursor(startInsert ? content.length : 0);
+      setMode(startInsert ? "insert" : "normal");
+      setPreview(false);
+      setDirty(false);
+      undoStack.current = [];
+      setMessage(null);
     } catch (e) {
-      setError(String(e));
+      say(String(e), true);
     }
-  }, [flushPending, loadList, openNote]);
+  }, [flushPending]);
 
-  // On arrival: jump straight to a fresh note when asked (the "q" quick-note
-  // shortcut), otherwise reopen whichever note was last open.
+  const closeNote = useCallback(async () => {
+    await flushPending();
+    const was = open;
+    setOpen(null);
+    setMode("normal");
+    await loadDir(was ? parentDir(was) : cwd, was ?? undefined);
+  }, [flushPending, open, cwd, loadDir]);
+
+  const newNote = useCallback(async (name: string, dir: string) => {
+    try {
+      const filename = await invoke<string>("save_note", { name, content: "", dir });
+      await openNote(filename, true);
+    } catch (e) {
+      say(String(e), true);
+    }
+  }, [openNote]);
+
+  // Arrival: a fresh note when asked (the "q" quick-note key), else the root folder.
   useEffect(() => {
-    if (startNew) { createNote(); return; }
-    loadList().then((list) => { if (list[0]) openNote(list[0].filename); });
-    // Mount-only — startNew is a one-time arrival flag, not something that
-    // should re-trigger this while the view stays mounted.
+    if (startNew) newNote(stampName(), "");
+    else loadDir("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const deleteNote = async (filename: string) => {
-    try {
-      await invoke("delete_note", { filename });
-      const list = await loadList();
-      if (selected === filename) {
-        pendingSave.current = null;
-        if (list[0]) await openNote(list[0].filename);
-        else { setSelected(null); setTitle(""); setBody(""); }
+  // ── Commands ──
+  const runCommand = async (raw: string) => {
+    setCommand(null);
+    const [cmd, ...rest] = raw.trim().split(/\s+/);
+    const arg = rest.join(" ");
+    const here = open ? parentDir(open) : cwd;
+
+    switch (cmd) {
+      case "w":
+        if (await flushPending()) say(`"${open}" written`);
+        return;
+      case "q": case "wq": case "x":
+        if (open) await closeNote();
+        else onHome();
+        return;
+      case "e": case "new": {
+        if (!arg) { say("Usage: :e name", true); return; }
+        const existing = entries.find((e) => !e.is_dir && e.title === arg.replace(/\.md$/, ""));
+        if (existing && !open) await openNote(existing.filename);
+        else await newNote(arg.replace(/\.md$/, ""), here);
+        return;
       }
-    } catch (e) {
-      setError(String(e));
+      case "mkdir": {
+        if (!arg) { say("Usage: :mkdir name", true); return; }
+        try {
+          const made = await invoke<string>("make_note_dir", { path: resolveDir(here, arg) });
+          if (open) await closeNote();
+          await loadDir(parentDir(made), made);
+          say(`Created ${made}/`);
+        } catch (e) { say(String(e), true); }
+        return;
+      }
+      case "cd": {
+        if (open) await closeNote();
+        const target = resolveDir(here, arg);
+        try {
+          await invoke("list_notes", { dir: target });
+          await loadDir(target);
+        } catch (e) { say(String(e), true); }
+        return;
+      }
+      case "preview":
+        if (open) setPreview((v) => !v);
+        return;
+      case "":
+        return;
+      default:
+        say(`Not a command: ${cmd}`, true);
     }
   };
 
-  // A note-scoped shortcut layer, separate from the app's global keybindings —
-  // ⌘N/⌘O only make sense while a note is actually the thing in focus.
+  // ── Browser keys ──
+  const enterRow = (r: NoteSummary | "..") => {
+    if (r === "..") loadDir(parentDir(cwd), cwd);
+    else if (r.is_dir) loadDir(r.filename);
+    else openNote(r.filename);
+  };
+
+  const deleteEntry = async (entry: NoteSummary) => {
+    setConfirmDelete(null);
+    try {
+      await invoke("delete_note", { filename: entry.filename });
+      const keep = row;
+      const list = await loadDir(cwd);
+      setRow(Math.min(keep, Math.max(0, list.length + (cwd ? 1 : 0) - 1)));
+      say(`Deleted ${entry.title}${entry.is_dir ? "/" : ""}`);
+    } catch (e) {
+      say(String(e), true);
+    }
+  };
+
+  const onBrowserKey = (e: React.KeyboardEvent) => {
+    if (e.metaKey) return;
+    const k = e.key;
+    if (message && !confirmDelete) setMessage(null);
+    if (confirmDelete) {
+      e.preventDefault();
+      if (k === "y") deleteEntry(confirmDelete);
+      else { setConfirmDelete(null); setMessage(null); }
+      return;
+    }
+    const current = rows[row];
+    const combo = pendingKey.current + k;
+    pendingKey.current = "";
+
+    if (k === "j" || k === "ArrowDown") setRow((r) => Math.min(r + 1, rows.length - 1));
+    else if (k === "k" || k === "ArrowUp") setRow((r) => Math.max(r - 1, 0));
+    else if ((k === "l" || k === "Enter" || k === "ArrowRight") && current) enterRow(current);
+    else if ((k === "h" || k === "-" || k === "ArrowLeft" || k === "Backspace") && cwd) loadDir(parentDir(cwd), cwd);
+    else if (combo === "gg") setRow(0);
+    else if (k === "G") setRow(rows.length - 1);
+    else if (combo === "dd" && current && current !== "..") setConfirmDelete(current);
+    else if (k === "g" || k === "d") pendingKey.current = k;
+    else if (k === ":") { e.preventDefault(); setCommand(""); }
+    else if (k === "Escape") onHome();
+    else if (k === bindings["calendar"]) onCalendar();
+    else if (k === bindings["settings"]) onSettings();
+    else return;
+    e.preventDefault();
+  };
+
+  // ── Editor keys ──
+  const onEditorKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.metaKey) return;
+    const el = e.currentTarget;
+    if (message) setMessage(null);
+    if (mode === "insert") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCursor(Math.max(0, el.selectionStart - 1));
+        setMode("normal");
+      }
+      return;
+    }
+
+    e.preventDefault();
+    const k = e.key;
+    if (k === ":") { setCommand(""); return; }
+    if (k === "u") {
+      const prev = undoStack.current.pop();
+      if (prev) { changeText(prev.text); setCursor(prev.cursor); }
+      else say("Already at oldest change");
+      return;
+    }
+    if (k === "-") { closeNote(); return; }
+    if (k.length > 1 && !k.startsWith("Arrow")) return; // Shift, Tab, etc.
+
+    const buf: VimBuffer = { text, cursor, register: register.current };
+    const pending = pendingKey.current;
+    const result = normalKey(buf, k, pending);
+    pendingKey.current = result.pending ?? "";
+    register.current = result.register;
+    if (result.text !== text) {
+      undoStack.current.push({ text, cursor });
+      changeText(result.text);
+    } else if (result.insert) {
+      undoStack.current.push({ text, cursor });
+    }
+    setCursor(result.cursor);
+    if (result.insert) setMode("insert");
+  };
+
+  // Normal mode shows a block cursor by selecting the character under it.
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el || !open || command !== null) return;
+    el.focus();
+    if (mode === "normal") el.setSelectionRange(cursor, Math.min(cursor + 1, text.length));
+    else el.setSelectionRange(cursor, cursor);
+    // In Insert mode the textarea owns the caret, so typing doesn't re-run
+    // this; in Normal mode an edit (dd, x, p) re-places the block cursor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor, mode, open, command, preview, mode === "normal" ? text : null]);
+
+  useEffect(() => {
+    if (!open && command === null) browserRef.current?.focus();
+  }, [open, command, entries]);
+
+  useEffect(() => { if (command !== null) commandRef.current?.focus(); }, [command]);
+
+  // Keeps the highlighted browser row in view.
+  useEffect(() => {
+    browserRef.current?.querySelector(".vim-row--selected")?.scrollIntoView({ block: "nearest" });
+  }, [row]);
+
+  // ⌘O / ⌘E / ⌘N work from anywhere in the view, as before.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !browsing) { onHome(); return; }
       if (!e.metaKey) return;
-      if (e.key === "n") { e.preventDefault(); createNote(); }
-      else if (e.key === "o") { e.preventDefault(); setBrowsing((v) => !v); }
-      else if (e.key === "e" && selected) { e.preventDefault(); setFormatting(false); setPreviewing((v) => !v); }
+      if (e.key === "o") { e.preventDefault(); if (open) closeNote(); }
+      else if (e.key === "e" && open) { e.preventDefault(); setPreview((v) => !v); }
+      else if (e.key === "n") { e.preventDefault(); newNote(stampName(), open ? parentDir(open) : cwd); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [createNote, onHome, browsing, selected]);
+  }, [open, cwd, closeNote, newNote]);
 
-  // The rebindable single-key layer — only live outside the title/body
-  // fields (useKeyboard ignores inputs and textareas), so it never fights
-  // with typing. ⌘O/⌘E above cover the same actions while a note is focused.
-  const handleKey = useCallback((key: string) => {
-    if (key === bindings["browse-notes"]) setBrowsing((v) => !v);
-    else if (key === bindings["notes-preview"] && selected) {
-      setFormatting(false);
-      setPreviewing((v) => !v);
-    }
-    else if (key === bindings["settings"]) onSettings();
-    else if (key === bindings["calendar"]) onCalendar();
-  }, [bindings, selected, onSettings, onCalendar]);
-  useKeyboard(handleKey);
+  const pos = lineCol(text, cursor);
+  const path = `~/notes/${open ?? (cwd ? `${cwd}/` : "")}`;
+  const hints = open
+    ? mode === "insert"
+      ? "esc to stop typing"
+      : "i type · :w save · :q close · - files"
+    : "j/k move · l open · h up · :e new · :mkdir · dd delete";
 
   return (
     <div className="main notes-view" tabIndex={-1}>
@@ -413,145 +380,127 @@ export function NotesPanel({ startNew, onHome, onCalendar, onSettings }: NotesPa
         <div className="topbar-center">
           <ViewSwitch active="notes" onSelect={(v) => (v === "tasks" ? onHome() : onCalendar())} />
         </div>
-        <div className="topbar-right" ref={browseRef} style={{ position: "relative" }}>
-          {status === "saving" && <span className="syncing" aria-label="saving" />}
-          {selected && (
-            <IconTag label={previewing ? "edit" : "preview"} keyHint={`⌘E / ${bindings["notes-preview"]}`}>
-              <button
-                type="button"
-                aria-label={previewing ? "edit" : "preview"}
-                className="topbar-icon-btn"
-                onClick={() => { setFormatting(false); setPreviewing((v) => !v); }}
-              >{previewing ? <PencilIcon /> : <EyeIcon />}</button>
-            </IconTag>
-          )}
-          <IconTag label="all notes" keyHint={`⌘O / ${bindings["browse-notes"]}`}>
-            <button
-              type="button"
-              aria-label="all notes"
-              aria-expanded={browsing}
-              className="topbar-icon-btn"
-              onClick={() => setBrowsing((v) => !v)}
-            ><ListIcon /></button>
-          </IconTag>
+        <div className="topbar-right">
           <IconTag label="settings" keyHint={bindings["settings"]}>
             <button className="topbar-icon-btn" aria-label="settings" onClick={onSettings}><GearIcon /></button>
           </IconTag>
-
-          {browsing && (
-            <div className="notes-browse-dropdown">
-              <button
-                type="button"
-                className="notes-list-item notes-list-new"
-                title="⌘N"
-                onClick={createNote}
-              >
-                <PlusIcon /> New note
-              </button>
-              {!loadingList && notes.length === 0 && (
-                <div className="notes-list-empty">
-                  Nothing saved yet.
-                </div>
-              )}
-              {notes.map((note) => (
-                <div
-                  key={note.filename}
-                  className={`notes-list-item${note.filename === selected ? " notes-list-item--active" : ""}`}
-                  onClick={() => selectNote(note.filename)}
-                >
-                  <div className="notes-list-item-row">
-                    <span className="notes-list-item-title">{displayTitle(note)}</span>
-                    <span className="notes-list-item-time">{relativeStamp(note.modified)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="notes-list-item-delete"
-                    title="delete note"
-                    onClick={(e) => { e.stopPropagation(); deleteNote(note.filename); }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {selected ? (
-        <div className="notes-write">
-          <div className="notes-write-title-row">
-            <button type="button" className="notes-back-btn" title="back to tasks [esc]" onClick={onHome}>‹</button>
-            <input
-              ref={titleRef}
-              className="notes-write-title"
-              value={title}
-              placeholder="Untitled"
-              onChange={(e) => handleTitleChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); bodyRef.current?.focus(); } }}
-              disabled={loadingContent}
-            />
-          </div>
-          {previewing ? (
-            <div
-              className="notes-write-preview"
-              dangerouslySetInnerHTML={{ __html: renderedBody || '<p class="notes-preview-empty">Nothing written yet.</p>' }}
-            />
-          ) : (
-            <textarea
-              ref={bodyRef}
-              className="notes-write-body"
-              value={body}
-              placeholder="Start writing..."
-              onChange={(e) => handleBodyChange(e.target.value)}
-              disabled={loadingContent}
-              spellCheck={false}
-            />
-          )}
-          <div className="notes-write-footer">
-            <span>{body.length} characters</span>
-            {!previewing && (
-              <button
-                type="button"
-                className={`notes-format-toggle${formatting ? " notes-format-toggle--active" : ""}`}
-                title="formatting"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setFormatting((v) => !v)}
-              >T</button>
-            )}
-          </div>
-          {formatting && !previewing && (
-            <div className="notes-format-bar">
-              {formatButtons.map((btn) => (
-                <button
-                  key={btn.key}
-                  type="button"
-                  className="notes-format-btn"
-                  title={btn.title}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={btn.onClick}
-                >{btn.label}</button>
-              ))}
-              <div className="notes-format-bar-spacer" />
-              <button
-                type="button"
-                className="notes-format-btn"
-                title="hide formatting"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setFormatting(false)}
-              >✕</button>
+      <div className="vim-path" title={path}>
+        {/* Each segment is a link back up the tree, like a clickable prompt. */}
+        <button type="button" className="vim-crumb" onClick={() => { if (open) closeNote(); loadDir(""); }}>~/notes</button>
+        {(open ?? cwd).split("/").filter(Boolean).map((part, i, all) => {
+          const target = all.slice(0, i + 1).join("/");
+          const isFile = !!open && i === all.length - 1;
+          return (
+            <span key={target}>
+              <span className="vim-sep">/</span>
+              {isFile ? (
+                <span className="vim-crumb vim-crumb--file">{part}</span>
+              ) : (
+                <button type="button" className="vim-crumb"
+                  onClick={async () => { if (open) await closeNote(); loadDir(target); }}>
+                  {part}
+                </button>
+              )}
+            </span>
+          );
+        })}
+        {dirty && <span className="vim-dirty">[+]</span>}
+      </div>
+
+      {open ? (
+        preview ? (
+          <div
+            className="notes-write-preview vim-preview"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(text) || '<p class="notes-preview-empty">Nothing written yet.</p>' }}
+          />
+        ) : (
+          <textarea
+            ref={textRef}
+            className={`vim-text vim-text--${mode}`}
+            value={text}
+            readOnly={mode === "normal"}
+            onChange={(e) => changeText(e.target.value)}
+            onKeyDown={onEditorKey}
+            onMouseUp={(e) => setCursor(e.currentTarget.selectionStart)}
+            spellCheck={false}
+            aria-label={`note ${open}, ${mode} mode`}
+          />
+        )
+      ) : (
+        <div
+          ref={browserRef}
+          className="vim-browser"
+          tabIndex={0}
+          role="listbox"
+          aria-label={`files in ${path}`}
+          onKeyDown={onBrowserKey}
+        >
+          {rows.map((r, i) => {
+            const name = r === ".." ? "../" : r.is_dir ? `${r.title}/` : r.title;
+            return (
+              <div
+                key={r === ".." ? ".." : r.filename}
+                role="option"
+                aria-selected={i === row}
+                className={
+                  "vim-row" +
+                  (i === row ? " vim-row--selected" : "") +
+                  (r === ".." || r.is_dir ? " vim-row--dir" : "")
+                }
+                onClick={() => { setRow(i); enterRow(r); }}
+              >
+                <span className="vim-name">{name}</span>
+                {r !== ".." && !r.is_dir && (
+                  <>
+                    <span className="vim-preview-line">{r.preview}</span>
+                    <span className="vim-time">{relativeStamp(r.modified)}</span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {!loading && entries.length === 0 && (
+            <div className="vim-empty">
+              Empty folder. Type <kbd className="kbd">:e name</kbd> to start a note.
             </div>
           )}
         </div>
-      ) : (
-        !loadingList && (
-          <div className="notes-editor-empty">
-            <button type="button" className="notes-new-btn" onClick={createNote}>+ new note</button>
-          </div>
-        )
       )}
 
-      {error && <div className="quickadd-problem notes-editor-error">{error}</div>}
+      <div className={`vim-status${message?.error ? " vim-status--error" : ""}`}>
+        {command !== null ? (
+          <form
+            className="vim-command"
+            onSubmit={(e) => { e.preventDefault(); runCommand(command); }}
+          >
+            <span>:</span>
+            <input
+              ref={commandRef}
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setCommand(null); } }}
+              spellCheck={false}
+              autoComplete="off"
+              aria-label="command"
+            />
+          </form>
+        ) : (
+          <>
+            <span className={`vim-mode vim-mode--${open ? mode : "files"}`}>
+              {open ? (mode === "insert" ? "INSERT" : "NORMAL") : "FILES"}
+            </span>
+            <span className="vim-message">
+              {confirmDelete
+                ? `Delete ${confirmDelete.title}${confirmDelete.is_dir ? "/" : ""}? y/n`
+                : message?.text ?? hints}
+            </span>
+            {open && <span className="vim-pos">{pos.line}:{pos.col}</span>}
+          </>
+        )}
+      </div>
     </div>
   );
 }
