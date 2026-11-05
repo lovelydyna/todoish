@@ -130,7 +130,7 @@ describe("addWeeks", () => {
 });
 
 describe("dayHeading", () => {
-  it("is an upper-case weekday, month and day", () => {
-    expect(dayHeading(new Date("2026-04-21T00:00:00"))).toMatch(/^TUE\b/);
+  it("is a sentence-case weekday, month and day", () => {
+    expect(dayHeading(new Date("2026-04-21T00:00:00"))).toMatch(/^Tue\b/);
   });
 });

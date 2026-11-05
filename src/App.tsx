@@ -120,6 +120,7 @@ export default function App() {
           initialTone={currentConfig?.completion_tone ?? "bell"}
           initialPosition={currentConfig?.startup_position ?? ""}
           initialGlobalShortcut={currentConfig?.global_shortcut ?? "CmdOrControl+Shift+T"}
+          initialAlwaysOnTop={currentConfig?.always_on_top ?? false}
           initialAppearance={appearanceOf(currentConfig)}
           initialTab={settingsTab}
           items={items}
@@ -145,7 +146,8 @@ export default function App() {
       );
     }
     if (view === "notes") {
-      return <Notes startNew={notesStartNew} onTasks={() => goTo("main")} onSettings={openSettings} />;
+      return <Notes startNew={notesStartNew} onTasks={() => goTo("main")}
+        onCalendar={() => goTo("calendar")} onSettings={openSettings} />;
     }
     return (
       <Main

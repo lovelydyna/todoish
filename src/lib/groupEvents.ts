@@ -115,7 +115,10 @@ export function upcomingByDay(events: Item[], now = new Date()): DaySection[] {
 /** A deadline that has already passed. */
 export function isDeadlinePassed(event: Item, now = new Date()): boolean {
   if (!event.deadline) return false;
-  return parseDueDate(event.deadline).getTime() < now.getTime();
+  const due = parseDueDate(event.deadline);
+  // A date-only deadline runs to the end of its day, not its first minute.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(event.deadline)) due.setDate(due.getDate() + 1);
+  return due.getTime() < now.getTime();
 }
 
 /** "9:00a", "9:00a–10:30a", or "all day" for a date-only start. */

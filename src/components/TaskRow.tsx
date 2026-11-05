@@ -1,28 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Item, TaskGroup as TG } from "../types";
+import { Item } from "../types";
 import { timeHint, isOverdue } from "../lib/timeHint";
-import { actionDate, groupSlug } from "../lib/groupTasks";
+import { actionDate } from "../lib/groupTasks";
 import { StatusBox } from "./StatusBox";
 
 interface TaskRowProps {
   item: Item;
-  /** Which group this row belongs to — NOW and THIS WEEK get a soft accent
-   *  tint, so what needs attention soonest reads at a glance. */
-  group?: TG;
   selected: boolean;
   expanded: boolean;
   onClick: () => void;
   onCycle: () => void;
 }
 
-const HIGHLIGHTED_GROUPS: TG[] = ["NOW", "THIS WEEK"];
-
-export function TaskRow({ item, group, selected, expanded, onClick, onCycle }: TaskRowProps) {
+export function TaskRow({ item, selected, expanded, onClick, onCycle }: TaskRowProps) {
   const due = actionDate(item);
-  const hint = timeHint(due);
-  const overdue = isOverdue(due);
+  // "today" only repeats the Now heading above it, so it's left off.
+  const hint = timeHint(due) === "today" ? "" : timeHint(due);
   const isDone = item.status === "Done";
-  const highlight = group && HIGHLIGHTED_GROUPS.includes(group) ? `task-row--${groupSlug(group)}` : "";
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -31,22 +25,21 @@ export function TaskRow({ item, group, selected, expanded, onClick, onCycle }: T
 
   return (
     <div
-      className={`task-row ${highlight} ${selected ? "task-row--selected" : ""} ${isDone ? "task-row--done" : ""}`}
+      className={`task-row${selected ? " task-row--selected" : ""}${isDone ? " task-row--done" : ""}`}
+      aria-selected={selected}
       onClick={onClick}
       onContextMenu={handleContextMenu}
     >
       <div className="task-row-main">
-        <span className="task-cursor">{selected ? "▶" : " "}</span>
         <StatusBox status={item.status} onCycle={onCycle} />
-        <span className="task-title">{item.name}</span>
-        {item.description && !expanded && (
-          <span className="task-has-note" title="has a description">·</span>
-        )}
-        {hint && !isDone && (
-          <span className={`task-hint ${overdue ? "task-hint--overdue" : ""}`}>
-            {hint}
-          </span>
-        )}
+        {/* The date sits under the name, on the same left edge the eye
+            already follows, rather than in a far-right column. */}
+        <div className="row-text">
+          <span className="task-title">{item.name}</span>
+          {hint && !isDone && (
+            <span className={`row-meta${isOverdue(due) ? " due--overdue" : ""}`}>{hint}</span>
+          )}
+        </div>
       </div>
       {expanded && item.description && (
         <div className="row-description">{item.description}</div>

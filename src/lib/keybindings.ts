@@ -15,37 +15,35 @@ export type Action =
   | "refresh"
   | "settings"
   | "help"
-  | "notes"
-  | "browse-notes"
-  | "notes-preview";
+  | "notes";
 
+/** What each key does, in the words the shortcuts list shows. Scope notes
+ *  ("task list", "calendar") mark the ones that only work in one view. */
 export const ACTION_LABELS: Record<Action, string> = {
   "move-down":    "move down",
   "move-up":      "move up",
-  "add":          "add item",
-  "cycle-status": "cycle status",
-  "edit":         "edit",
-  "delete":       "delete",
-  "undo":         "undo delete",
-  "toggle-done":  "toggle done archive",
+  "add":          "new task or event",
+  "cycle-status": "change status",
+  "edit":         "edit selected",
+  "delete":       "delete selected",
+  "undo":         "undo delete (task list)",
+  "toggle-done":  "show all done tasks (task list)",
   "calendar":     "switch tasks ⇄ calendar",
-  "notes-view":   "notes view",
-  "month":        "month view",
-  "expand":       "expand description",
+  "notes-view":   "open notes",
+  "month":        "month view (calendar)",
+  "expand":       "show description",
   "today":        "jump to today",
-  "refresh":      "refresh",
+  "refresh":      "refresh from Notion",
   "settings":     "settings",
-  "help":         "help",
+  "help":         "keyboard shortcuts",
   "notes":        "new note",
-  "browse-notes": "browse notes",
-  "notes-preview": "toggle note preview",
 };
 
 export const ACTION_SECTIONS: { label: string; actions: Action[] }[] = [
-  { label: "navigation", actions: ["move-down", "move-up"] },
-  { label: "tasks",      actions: ["add", "cycle-status", "edit", "delete", "undo"] },
-  { label: "view",       actions: ["toggle-done", "calendar", "notes-view", "month", "today", "expand", "refresh"] },
-  { label: "app",        actions: ["settings", "help", "notes", "browse-notes", "notes-preview"] },
+  { label: "moving around", actions: ["move-down", "move-up", "today"] },
+  { label: "tasks and events", actions: ["add", "cycle-status", "edit", "delete", "undo", "expand"] },
+  { label: "views", actions: ["calendar", "month", "toggle-done", "notes-view"] },
+  { label: "app", actions: ["notes", "refresh", "settings", "help"] },
 ];
 
 export type Bindings = Record<Action, string>;
@@ -68,8 +66,6 @@ export const DEFAULTS: Bindings = {
   "settings":     ",",
   "help":         "?",
   "notes":        "q",
-  "browse-notes": "b",
-  "notes-preview": "p",
 };
 
 const STORAGE_KEY = "todoish:keybindings";
@@ -78,7 +74,10 @@ export function loadBindings(): Bindings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
-    return { ...DEFAULTS, ...JSON.parse(raw) };
+    // Drop saved keys for actions that no longer exist (e.g. the old notes
+    // browser), so they can't block a key in the duplicate check.
+    const saved = Object.entries(JSON.parse(raw)).filter(([a]) => a in DEFAULTS);
+    return { ...DEFAULTS, ...Object.fromEntries(saved) } as Bindings;
   } catch {
     return { ...DEFAULTS };
   }

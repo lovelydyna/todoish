@@ -4,9 +4,15 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { playComplete } from "../lib/sounds";
 import { WindowControls } from "../components/WindowControls";
 import { KeybindingsEditor } from "../components/KeybindingsEditor";
-import { useKeybindings } from "../hooks/useKeybindings";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { FieldLabel } from "../components/InfoTip";
+import {
+  AppearanceIcon,
+  ClockIcon,
+  DatabaseIcon,
+  GearIcon,
+  KeyboardIcon,
+} from "../components/Icons";
 import { Item, SchemaOverride } from "../types";
 import {
   Appearance,
@@ -29,6 +35,7 @@ interface SetupProps {
   initialTone?: string;
   initialPosition?: string;
   initialGlobalShortcut?: string;
+  initialAlwaysOnTop?: boolean;
   initialAppearance?: Partial<Appearance>;
   /** Which tab to open on. Lets `?` jump straight to the keybindings. */
   initialTab?: SettingsTab;
@@ -39,12 +46,12 @@ interface SetupProps {
 
 const TONES = ["bell", "chime", "click", "none"] as const;
 const POSITIONS = [
-  { value: "", label: "last position" },
-  { value: "top-left", label: "top left" },
-  { value: "top-right", label: "top right" },
-  { value: "bottom-left", label: "bottom left" },
-  { value: "bottom-right", label: "bottom right" },
-  { value: "center", label: "center" },
+  { value: "", label: "Where it was last" },
+  { value: "top-left", label: "Top left" },
+  { value: "top-right", label: "Top right" },
+  { value: "bottom-left", label: "Bottom left" },
+  { value: "bottom-right", label: "Bottom right" },
+  { value: "center", label: "Center" },
 ] as const;
 
 /** Mirrors notion::PropertySummary. */
@@ -79,18 +86,28 @@ const ROLE_KINDS: Record<"status" | "time" | "deadline" | "description", string[
   description: ["rich_text"],
 };
 
+const ROLE_LABELS: Record<keyof typeof ROLE_KINDS, string> = {
+  status: "Status",
+  time: "Date",
+  deadline: "Deadline",
+  description: "Description",
+};
+
 export type SettingsTab =
   | "calendar"
   | "appearance"
   | "history"
   | "keybindings"
   | "general";
-const TABS: { id: SettingsTab; label: string; icon: string }[] = [
-  { id: "general", label: "general", icon: "⚙" },
-  { id: "appearance", label: "appearance", icon: "◐" },
-  { id: "calendar", label: "calendar", icon: "▦" },
-  { id: "history", label: "history", icon: "◴" },
-  { id: "keybindings", label: "keys", icon: "⌨" },
+
+// "calendar" is the Notion connection tab; the id predates the rename and is
+// what `onSettings(tab)` callers pass.
+const TABS: { id: SettingsTab; label: string; Icon: () => JSX.Element }[] = [
+  { id: "general", label: "General", Icon: GearIcon },
+  { id: "appearance", label: "Appearance", Icon: AppearanceIcon },
+  { id: "calendar", label: "Notion", Icon: DatabaseIcon },
+  { id: "history", label: "History", Icon: ClockIcon },
+  { id: "keybindings", label: "Shortcuts", Icon: KeyboardIcon },
 ];
 
 export function Setup({
@@ -102,12 +119,12 @@ export function Setup({
   initialTone = "bell",
   initialPosition = "",
   initialGlobalShortcut = "CmdOrControl+Shift+T",
+  initialAlwaysOnTop = false,
   initialAppearance = {},
   initialTab = "general",
   items = [],
   historyLoading = false,
 }: SetupProps) {
-  const { bindings } = useKeybindings();
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [tone, setTone] = useState(initialTone);
   const [position, setPosition] = useState(initialPosition);
@@ -117,6 +134,7 @@ export function Setup({
   const [enabledDataSources, setEnabledDataSources] = useState<string[]>(initialEnabledDataSources);
   const [schemaOverrides, setSchemaOverrides] = useState<Record<string, SchemaOverride>>(initialSchemaOverrides);
   const [autostart, setAutostart] = useState(false);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(initialAlwaysOnTop);
   const [appearance, setAppearance] = useState(() => normalizeAppearance(initialAppearance));
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +181,8 @@ export function Setup({
         theme: appearance.theme,
         colorMode: appearance.mode,
         windowOpacity: appearance.opacity,
+        // Omitted on first run, where the switch isn't shown.
+        alwaysOnTop: isSettings ? alwaysOnTop : undefined,
       });
       if (isSettings) {
         setSaved(true);
@@ -223,95 +243,54 @@ export function Setup({
     await (next ? enable() : disable()).catch(() => setAutostart(!next));
   };
 
-  // The Thunderbird source-list look: in settings, the icon rail runs the
-  // full height of the panel, including alongside the titlebar row — it is
-  // not a row *below* the titlebar the way it is in the first-run flow,
-  // which has no rail to make room for.
-  const titlebar = (
-    <div className="setup-titlebar">
-      <WindowControls />
-      <span className="brand setup-brand">todoish</span>
-      <div className="topbar-right" />
-    </div>
-  );
+  const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
-  return (
-    <div className={`setup${isSettings ? " setup--settings" : ""}`}>
-      {!isSettings && (
-        <>
-          {titlebar}
-          <div className="setup-header">
-            <span className="setup-subtitle">connect to notion</span>
-          </div>
-        </>
-      )}
+  const form = (
+    <form onSubmit={handleSubmit} className="setup-form">
+      <div className="setup-scroll">
+        {isSettings && <h1 className="settings-heading">{activeTab.label}</h1>}
 
-      <div className={isSettings ? "setup-body" : undefined}>
-        {isSettings && (
-          <div className="settings-sidebar" role="tablist">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                title={t.id === "keybindings" ? `${t.label} [${bindings["help"]}]` : t.label}
-                aria-label={t.label}
-                className={`settings-sidebar-btn${tab === t.id ? " settings-sidebar-btn--active" : ""}`}
-                onClick={() => setTab(t.id)}
-              >
-                <span className="settings-sidebar-icon" aria-hidden="true">{t.icon}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-      <div className={isSettings ? "setup-content" : undefined}>
-      {isSettings && titlebar}
-      <form onSubmit={handleSubmit} className="setup-form">
         {showTab("calendar") && (
           <>
-            <div className="field">
-              <FieldLabel info="Notion developer portal → your connection → configuration → internal connection token. Not the personal access token — that one is user-scoped. No database id needed: todoish reads every database you've shared with this integration (··· → Connections, in Notion), and you can share more than one.">
-                connection token
+            <div className="setting">
+              <FieldLabel info="Notion developer portal → your connection → Configuration → internal connection token. Not the personal access token. No database id needed: todoish reads every database you've shared with this connection (··· → Connections, in Notion).">
+                Connection token
               </FieldLabel>
-              <input
-                className="field-input"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="secret_..."
-                autoFocus={!isSettings}
-                required
-              />
-            </div>
-
-            <div className="schema-bar">
-              <button
-                type="button"
-                className="schema-check-btn"
-                onClick={checkConnection}
-                disabled={checking || !apiKey.trim()}
-              >
-                {checking ? "checking…" : "check"}
-              </button>
-              {schemaReports && (
-                <span className="schema-summary">
-                  {schemaReports.length === 0
-                    ? "no databases shared"
-                    : `${schemaReports.length} database${schemaReports.length === 1 ? "" : "s"} found`}
+              <div className="token-row">
+                <input
+                  className="field-input"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="secret_…"
+                  aria-label="connection token"
+                  autoFocus={!isSettings}
+                  required
+                />
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={checkConnection}
+                  disabled={checking || !apiKey.trim()}
+                >
+                  {checking ? "Checking…" : "Check"}
+                </button>
+              </div>
+              {schemaReports && schemaReports.length > 0 && (
+                <span className="setting-note">
+                  {schemaReports.length} database{schemaReports.length === 1 ? "" : "s"} found.
+                  Untick any you don't want in todoish.
                 </span>
+              )}
+              {!schemaReports && (
+                <span className="setting-note">Check to see which databases todoish can read.</span>
               )}
             </div>
 
             {schemaReports?.length === 0 && (
-              <div className="schema-list">
-                <div className="schema-line">
-                  <span className="schema-match schema-match--missing">
-                    Open a database in Notion, click "···" in the top right, choose Connections,
-                    and add your integration — it'll show up here.
-                  </span>
-                </div>
+              <div className="callout callout--warn">
+                No databases are shared yet. In Notion, open a database, click ··· in the
+                top right, choose Connections and add your integration. Then check again.
               </div>
             )}
 
@@ -319,56 +298,54 @@ export function Setup({
               const allIds = schemaReports.map((r) => r.data_source_id);
               const enabled = enabledDataSources.length === 0 || enabledDataSources.includes(report.data_source_id);
               return (
-                <div key={report.data_source_id} className="schema-list">
-                  <div className="schema-line">
-                    <label className="schema-role schema-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={() => toggleDataSource(report.data_source_id, allIds)}
-                      />
-                      {" "}{report.database_title}
-                    </label>
-                    <span className="schema-match">
-                      {report.missing.length === 0 ? "all properties matched" : `${report.missing.length} missing`}
+                <div key={report.data_source_id} className={`db-card${enabled ? "" : " db-card--off"}`}>
+                  <label className="db-card-head">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={enabled}
+                      onChange={() => toggleDataSource(report.data_source_id, allIds)}
+                    />
+                    <span className="db-card-title">{report.database_title}</span>
+                    <span className={`badge${report.missing.length ? " badge--warn" : " badge--ok"}`}>
+                      {report.missing.length === 0 ? "All matched" : `${report.missing.length} missing`}
                     </span>
-                  </div>
+                  </label>
                   {enabled && (
-                    <>
-                      <div className="schema-line">
-                        <span className="schema-role">name</span>
-                        <span className="schema-match">{report.title}</span>
+                    <div className="db-card-body">
+                      <div className="db-row">
+                        <span className="db-role">Name</span>
+                        <span className="db-value">{report.title}</span>
                       </div>
                       {(["status", "time", "deadline", "description"] as const).map((role) => {
                         const matched = report[role];
                         const options = report.properties.filter((p) => ROLE_KINDS[role].includes(p.kind));
                         return (
-                          <div key={role} className="schema-line">
-                            <span className="schema-role">{role === "time" ? "date" : role}</span>
+                          <div key={role} className="db-row">
+                            <span className="db-role">{ROLE_LABELS[role]}</span>
                             <select
-                              className="schema-match-select"
+                              className={`select${matched ? "" : " select--missing"}`}
+                              aria-label={`${ROLE_LABELS[role]} property`}
                               value={matched ?? ""}
                               onChange={(e) => setOverride(report.data_source_id, role, e.target.value)}
                             >
-                              <option value="">not found</option>
+                              <option value="">Not found</option>
                               {options.map((p) => (
-                                <option key={p.name} value={p.name}>
-                                  {p.name}
-                                </option>
+                                <option key={p.name} value={p.name}>{p.name}</option>
                               ))}
                             </select>
                           </div>
                         );
                       })}
                       {report.status_options.length > 0 && (
-                        <div className="schema-line">
-                          <span className="schema-role">stages</span>
-                          <span className="schema-match">
+                        <div className="db-row">
+                          <span className="db-role">Stages</span>
+                          <span className="db-value db-value--dim">
                             {report.status_options.join(" → ")}
                           </span>
                         </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
               );
@@ -378,16 +355,18 @@ export function Setup({
 
         {isSettings && showTab("appearance") && (
           <>
-            <div className="field">
-              <FieldLabel info="Auto follows your system light/dark setting and repaints when the OS switches.">
-                appearance
+            <div className="setting">
+              <FieldLabel info="Auto follows your Mac's light/dark setting and switches when it does.">
+                Mode
               </FieldLabel>
-              <div className="mode-options mode-options--full">
+              <div className="segmented" role="radiogroup" aria-label="mode">
                 {COLOR_MODES.map((m) => (
                   <button
                     key={m.id}
                     type="button"
-                    className={`mode-btn${appearance.mode === m.id ? " mode-btn--active" : ""}`}
+                    role="radio"
+                    aria-checked={appearance.mode === m.id}
+                    className={`segmented-btn${appearance.mode === m.id ? " segmented-btn--active" : ""}`}
                     onClick={() => previewAppearance({ mode: m.id })}
                   >
                     {m.label}
@@ -396,49 +375,52 @@ export function Setup({
               </div>
             </div>
 
-            <div className="field">
-              <label className="field-label">theme</label>
-              <div className="theme-options">
+            <div className="setting">
+              <FieldLabel>Theme</FieldLabel>
+              <div className="theme-grid" role="radiogroup" aria-label="theme">
                 {THEMES.map((t) => {
-                  // Swatch shows the palette that is actually rendering, so
-                  // picking a theme in light mode previews its light colours.
+                  // The preview shows the palette that is actually rendering,
+                  // so picking a theme in light mode previews its light colours.
                   const palette = resolveScheme(appearance.mode) === "light" ? t.light : t.dark;
+                  const active = appearance.theme === t.id;
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      className={`theme-btn${appearance.theme === t.id ? " theme-btn--active" : ""}`}
+                      role="radio"
+                      aria-checked={active}
+                      className={`theme-card${active ? " theme-card--active" : ""}`}
                       onClick={() => previewAppearance({ theme: t.id })}
                     >
-                      <span
-                        className="theme-swatch"
-                        style={{
-                          background: `rgb(${palette.tint})`,
-                          borderColor: palette.vars["--accent-next"],
-                        }}
-                      >
-                        <span
-                          className="theme-swatch-dot"
-                          style={{ background: palette.vars["--accent-now"] }}
-                        />
+                      <span className="theme-preview" style={{ background: `rgb(${palette.tint})` }}>
+                        {(["--accent-now", "--accent-next", "--accent-blue"] as const).map((v, i) => (
+                          <span key={v} className="theme-preview-row">
+                            <span className="theme-preview-ring" style={{ borderColor: palette.vars[v] }} />
+                            <span
+                              className="theme-preview-line"
+                              style={{ background: palette.vars["--text-faint"], width: `${70 - i * 16}%` }}
+                            />
+                          </span>
+                        ))}
                       </span>
-                      {t.label}
+                      <span className="theme-name">{t.label}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="field">
+            <div className="setting">
               <FieldLabel
-                info="Lower lets the desktop show through the window blur."
+                info="Lower lets more of the desktop show through the blur."
                 value={`${Math.round(appearance.opacity * 100)}%`}
               >
-                opacity
+                Opacity
               </FieldLabel>
               <input
                 className="field-slider"
                 type="range"
+                aria-label="opacity"
                 min={OPACITY_RANGE.min}
                 max={OPACITY_RANGE.max}
                 step={0.02}
@@ -449,21 +431,27 @@ export function Setup({
           </>
         )}
 
-        {isSettings && showTab("keybindings") && <KeybindingsEditor
+        {isSettings && showTab("keybindings") && (
+          <KeybindingsEditor
             globalShortcut={globalShortcut}
             onGlobalShortcutChange={setGlobalShortcut}
-          />}
+          />
+        )}
 
         {isSettings && showTab("general") && (
           <>
-            <div className="field">
-              <label className="field-label">completion tone</label>
-              <div className="tone-options">
+            <div className="setting">
+              <FieldLabel info="Plays when you tick a task off. Pick one to hear it.">
+                Completion sound
+              </FieldLabel>
+              <div className="segmented" role="radiogroup" aria-label="completion sound">
                 {TONES.map((t) => (
                   <button
                     key={t}
                     type="button"
-                    className={`tone-btn${tone === t ? " tone-btn--active" : ""}`}
+                    role="radio"
+                    aria-checked={tone === t}
+                    className={`segmented-btn${tone === t ? " segmented-btn--active" : ""}`}
                     onClick={() => {
                       setTone(t);
                       playComplete(t);
@@ -475,34 +463,53 @@ export function Setup({
               </div>
             </div>
 
-            <div className="field">
-              <label className="field-label">open at startup</label>
+            <div className="setting setting--row">
+              <FieldLabel info="Keeps todoish above other windows, including a full-screen browser, so you can take notes during a meeting. Applies when you save.">
+                Stay on top
+              </FieldLabel>
               <button
                 type="button"
-                className={`toggle-btn${autostart ? " toggle-btn--on" : ""}`}
-                onClick={toggleAutostart}
+                role="switch"
+                aria-checked={alwaysOnTop}
+                aria-label="stay on top"
+                className={`switch${alwaysOnTop ? " switch--on" : ""}`}
+                onClick={() => setAlwaysOnTop((v) => !v)}
               >
-                {autostart ? "on" : "off"}
+                <span className="switch-knob" />
               </button>
             </div>
 
-            {autostart && (
-              <div className="field">
-                <label className="field-label">startup position</label>
-                <div className="position-options">
-                  {POSITIONS.map((p) => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      className={`position-btn${position === p.value ? " position-btn--active" : ""}`}
-                      onClick={() => setPosition(p.value)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className="setting setting--row">
+              <FieldLabel info="Starts todoish when you log in to your Mac. This one applies right away.">
+                Open at login
+              </FieldLabel>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autostart}
+                aria-label="open at login"
+                className={`switch${autostart ? " switch--on" : ""}`}
+                onClick={toggleAutostart}
+              >
+                <span className="switch-knob" />
+              </button>
+            </div>
+
+            <div className="setting setting--row">
+              <FieldLabel info="Where the window appears each time todoish starts.">
+                Opens at
+              </FieldLabel>
+              <select
+                className="select"
+                aria-label="window position when todoish starts"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+              >
+                {POSITIONS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
           </>
         )}
 
@@ -510,18 +517,69 @@ export function Setup({
           <HistoryPanel items={items} loading={historyLoading} />
         )}
 
-        {error && <div className="setup-error">{error}</div>}
-        {saved && <div className="setup-saved">saved</div>}
+        {error && <div className="callout callout--error" role="alert">{error}</div>}
+      </div>
 
-        {/* History is a read-only log — nothing on that tab to save. */}
-        {!(isSettings && tab === "history") && (
-          <button className="setup-submit" type="submit" disabled={loading}>
-            {loading ? "saving…" : isSettings ? "save" : "connect"}
+      {/* History is a read-only log — nothing on that tab to save. */}
+      {!(isSettings && tab === "history") && (
+        <div className="setup-footer">
+          {saved && <span className="setup-saved" role="status">Saved</span>}
+          {isSettings && (
+            <button type="button" className="btn btn--secondary" title="[esc]" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+          <button className="btn btn--primary" type="submit" disabled={loading}>
+            {loading ? "Saving…" : isSettings ? "Save" : "Connect"}
           </button>
-        )}
-      </form>
+        </div>
+      )}
+    </form>
+  );
+
+  return (
+    <div className={`setup${isSettings ? " setup--settings" : ""}`}>
+      <div className="setup-titlebar" data-tauri-drag-region>
+        <WindowControls />
+        <span className="setup-title" data-tauri-drag-region>{isSettings ? "Settings" : ""}</span>
+        <div />
+
       </div>
-      </div>
+
+      {isSettings ? (
+        <div className="setup-body">
+          <nav className="settings-nav" role="tablist" aria-orientation="vertical">
+            {TABS.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                className={`settings-nav-btn${tab === id ? " settings-nav-btn--active" : ""}`}
+                onClick={() => setTab(id)}
+              >
+                <Icon />
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
+          {form}
+        </div>
+      ) : (
+        <div className="welcome">
+          <div className="welcome-mark" aria-hidden="true">
+            <span className="welcome-ring welcome-ring--now" />
+            <span className="welcome-ring welcome-ring--next" />
+            <span className="welcome-ring welcome-ring--later" />
+          </div>
+          <h1 className="welcome-title">Connect Notion</h1>
+          <p className="welcome-text">
+            todoish shows tasks from the Notion databases you share with it, sorted by
+            when you need to act. Paste your connection token to start.
+          </p>
+          {form}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ use crate::config::{load_config, save_config, Config};
 use crate::notion::{self, Item, SchemaOverride};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// The row behind an id, or a clear error if the cache has moved on. A stale
 /// id fails here rather than as a 404 from the Notion API.
@@ -37,8 +37,12 @@ pub async fn save_config_cmd(
     theme: String,
     color_mode: String,
     window_opacity: f64,
+    always_on_top: Option<bool>,
 ) -> Result<(), String> {
     notion::forget_sources();
+    // First-run setup doesn't show this switch; keep whatever was saved.
+    let always_on_top =
+        always_on_top.unwrap_or_else(|| load_config().map(|c| c.always_on_top).unwrap_or(false));
     save_config(&Config {
         notion_api_key: api_key,
         enabled_data_sources,
@@ -49,8 +53,12 @@ pub async fn save_config_cmd(
         theme,
         color_mode,
         window_opacity,
+        always_on_top,
     })?;
     crate::register_global_shortcut(&app);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_always_on_top(always_on_top);
+    }
     Ok(())
 }
 
@@ -245,14 +253,20 @@ pub async fn open_in_notion(item_id: String, cache: State<'_, ItemCache>) -> Res
 /// Saves a new quick note to `~/.todoish/notes/`. Returns the filename it
 /// landed under, in case a name collision changed it.
 #[tauri::command]
-pub async fn save_note(name: String, content: String) -> Result<String, String> {
-    crate::notes::save_note(&name, &content)
+pub async fn save_note(name: String, content: String, dir: Option<String>) -> Result<String, String> {
+    crate::notes::save_note(&name, &content, dir.as_deref())
 }
 
-/// Every saved note, for the notes tab in settings.
+/// One notes folder's contents (the root when `dir` is omitted).
 #[tauri::command]
-pub async fn list_notes() -> Result<Vec<crate::notes::NoteSummary>, String> {
-    crate::notes::list_notes()
+pub async fn list_notes(dir: Option<String>) -> Result<Vec<crate::notes::NoteSummary>, String> {
+    crate::notes::list_notes(dir.as_deref())
+}
+
+/// Creates a folder under the notes root; returns its relative path.
+#[tauri::command]
+pub async fn make_note_dir(path: String) -> Result<String, String> {
+    crate::notes::make_dir(&path)
 }
 
 #[tauri::command]

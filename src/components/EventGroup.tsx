@@ -2,10 +2,12 @@ import { Item } from "../types";
 import { EventRow } from "./EventRow";
 
 interface EventGroupProps {
-  /** Heading text — a bucket name like TODAY, or a date like "TUE AUG 11". */
+  /** Heading text — "Today", "Tomorrow", or a date like "Tue, Aug 11". */
   label: string;
-  /** Drives the heading colour; omit for the neutral date-section look. */
-  variant?: "today" | "tomorrow" | "upcoming";
+  /** Quiet date beside a relative heading, e.g. "Wed, Nov 4" beside Today. */
+  aside?: string;
+  /** Drives the checkbox ring colour; omit for the neutral date-section look. */
+  variant?: "today" | "tomorrow";
   events: Item[];
   selectedId: string | null;
   expandedId: string | null;
@@ -15,6 +17,7 @@ interface EventGroupProps {
 
 export function EventGroup({
   label,
+  aside,
   variant,
   events,
   selectedId,
@@ -25,9 +28,13 @@ export function EventGroup({
   if (events.length === 0) return null;
 
   return (
-    <div className="task-group">
-      <div className={`group-label${variant ? ` group-label--${variant}` : " group-label--date"}`}>
-        {label}
+    <section className={`task-group task-group--${variant ?? "date"}`}>
+      <div className="group-head">
+        <h2 className="group-title">
+          <span className="group-name">{label}</span>
+          <span className="group-count">{events.length}</span>
+        </h2>
+        {aside && <span className="group-aside">{aside}</span>}
       </div>
       {events.map((event) => (
         <EventRow
@@ -39,6 +46,6 @@ export function EventGroup({
           onCycle={() => onCycle(event)}
         />
       ))}
-    </div>
+    </section>
   );
 }

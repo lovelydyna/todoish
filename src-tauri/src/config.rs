@@ -35,6 +35,9 @@ pub struct Config {
     /// Opacity of the window wash, 0.3–1.0.
     #[serde(default = "default_opacity")]
     pub window_opacity: f64,
+    /// Keep the window above other apps, e.g. a browser during a meeting.
+    #[serde(default)]
+    pub always_on_top: bool,
 }
 
 fn default_global_shortcut() -> String {

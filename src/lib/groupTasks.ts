@@ -114,6 +114,15 @@ export const TASK_GROUP_ORDER: TaskGroup[] = [
   "DONE",
 ];
 
+/** What each group's heading says on screen; the upper-case names stay as keys. */
+export const TASK_GROUP_LABELS: Record<TaskGroup, string> = {
+  NOW: "Now",
+  "THIS WEEK": "This week",
+  "NEXT WEEK": "Next week",
+  LATER: "Later",
+  DONE: "Done",
+};
+
 export function flattenGroups(groups: Record<TaskGroup, Item[]>): Item[] {
   return TASK_GROUP_ORDER.flatMap((group) => groups[group]);
 }

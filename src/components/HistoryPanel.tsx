@@ -35,8 +35,8 @@ export function HistoryPanel({ items, loading }: HistoryPanelProps) {
     <div className="history-panel">
       {days.map(({ date, entries }) => (
         <div key={date.toISOString()} className="task-group">
-          <div className="group-label group-label--date">
-            {activityDayHeading(date)}
+          <div className="group-head">
+            <h2 className="group-title">{activityDayHeading(date)}</h2>
           </div>
           {entries.map((entry) => (
             <div
@@ -58,8 +58,9 @@ export function HistoryPanel({ items, loading }: HistoryPanelProps) {
 
       {!loading && days.length === 0 && (
         <div className="empty">
-          <div className="empty-icon">◴</div>
-          <div>nothing here yet</div>
+          <div className="empty-mark" aria-hidden="true">◴</div>
+          <div className="empty-title">Nothing here yet</div>
+          <div className="empty-hint">Tasks you add, edit or finish show up here.</div>
         </div>
       )}
     </div>

@@ -99,6 +99,7 @@ pub fn run() {
             commands::open_in_notion,
             commands::save_note,
             commands::list_notes,
+            commands::make_note_dir,
             commands::read_note,
             commands::update_note,
             commands::delete_note,
@@ -125,9 +126,11 @@ pub fn run() {
                 );
             }
 
-            // Visible on all workspaces — follows the user across every Space.
+            // Visible on all workspaces — follows the user across every Space,
+            // including a full-screen app's Space (a browser in a meeting).
             // Using direct ObjC call (same thread as setup = main thread, safe).
-            // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
+            // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0,
+            // NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
                 {
@@ -136,9 +139,12 @@ pub fn run() {
                     if let Ok(ptr) = window.ns_window() {
                         unsafe {
                             let ns_win = ptr as *mut AnyObject;
-                            let _: () = msg_send![&*ns_win, setCollectionBehavior: 1usize];
+                            let _: () = msg_send![&*ns_win, setCollectionBehavior: (1usize | 1 << 8)];
                         }
                     }
+                }
+                if config::load_config().is_some_and(|c| c.always_on_top) {
+                    let _ = window.set_always_on_top(true);
                 }
             }
 

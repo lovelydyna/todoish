@@ -1,61 +1,47 @@
-import { IconTag } from "./IconTag";
+import { useKeybindings } from "../hooks/useKeybindings";
+import { keyLabel } from "../lib/keybindings";
 
-export type AppView = "tasks" | "calendar";
+export type AppView = "tasks" | "calendar" | "notes";
 
 interface ViewSwitchProps {
   active: AppView;
   onSelect: (view: AppView) => void;
-  /** Key that toggles between the two, shown in the tooltip. */
-  toggleKey: string;
 }
 
-const TasksIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M5 8.2 7 10.2 11 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const CalendarIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M2 6.5h12M5 1.5v3M11 1.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </svg>
-);
-
-const VIEWS: { id: AppView; label: string; Icon: () => JSX.Element }[] = [
-  { id: "tasks", label: "tasks", Icon: TasksIcon },
-  { id: "calendar", label: "calendar", Icon: CalendarIcon },
+const VIEWS: { id: AppView; label: string }[] = [
+  { id: "tasks", label: "Tasks" },
+  { id: "calendar", label: "Calendar" },
+  { id: "notes", label: "Notes" },
 ];
 
 /**
- * The tasks ↔ calendar toggle, sitting where the brand used to.
- *
- * Modelled on the Home/Code switch in Claude's own UI: a recessed track with
- * one raised neutral chip that slides between the halves. The contrast is
- * elevation, not colour — the active side looks lit from above and the
- * inactive side recedes, which reads instantly without tinting the chrome.
+ * The app's three places as one labelled segmented control in the centre of
+ * the toolbar, in the same spot in every view, so where you are and where
+ * you can go are both always visible.
  */
-export function ViewSwitch({ active, onSelect, toggleKey }: ViewSwitchProps) {
+export function ViewSwitch({ active, onSelect }: ViewSwitchProps) {
+  const { bindings } = useKeybindings();
+  const keys: Record<AppView, string> = {
+    // From notes, Escape is the way back to tasks.
+    tasks: active === "notes" ? "Escape" : bindings["calendar"],
+    calendar: bindings["calendar"],
+    notes: bindings["notes-view"],
+  };
+
   return (
-    <div className="view-switch" role="tablist">
-      <span
-        className="view-switch-thumb"
-        style={{ transform: active === "calendar" ? "translateX(100%)" : "none" }}
-      />
-      {VIEWS.map(({ id, label, Icon }) => (
-        <IconTag key={id} label={label} keyHint={toggleKey}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={active === id}
-            aria-label={label}
-            className={`view-switch-btn${active === id ? " view-switch-btn--active" : ""}`}
-            onClick={() => onSelect(id)}
-          >
-            <Icon />
-          </button>
-        </IconTag>
+    <div className="view-switch" role="tablist" aria-label="view">
+      {VIEWS.map(({ id, label }) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={active === id}
+          title={`${label} [${keyLabel(keys[id])}]`}
+          className={`view-switch-btn${active === id ? " view-switch-btn--active" : ""}`}
+          onClick={() => { if (id !== active) onSelect(id); }}
+        >
+          {label}
+        </button>
       ))}
     </div>
   );
