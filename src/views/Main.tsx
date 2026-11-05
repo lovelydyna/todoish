@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { CalendarAccount, Item } from "../types";
+import { Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -15,9 +15,6 @@ interface MainProps {
   items: Item[];
   loading: boolean;
   error: string | null;
-  /** A calendar sync that failed while the tasks loaded fine. */
-  calendarWarning: string | null;
-  calendarAccounts: CalendarAccount[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -34,7 +31,7 @@ interface PendingDelete {
 }
 
 export function Main({
-  items, loading, error, calendarWarning, calendarAccounts,
+  items, loading, error,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
   onSettings, onCalendar, onNotes,
 }: MainProps) {
@@ -181,7 +178,6 @@ export function Main({
       </div>
 
       {error && <div className="error-banner">{error}</div>}
-      {calendarWarning && <div className="calendar-warning">{calendarWarning}</div>}
 
       {!loading && activeItems === 0 && groups.DONE.length === 0 && !error && (
         <div className="empty">
@@ -198,7 +194,6 @@ export function Main({
             group={group}
             label={group === "DONE" && showAllDone ? "DONE · all" : group}
             items={groups[group]}
-            calendarAccounts={calendarAccounts}
             selectedId={selected?.id ?? null}
             expandedId={expandedId}
             onSelect={selectRow}
@@ -232,7 +227,6 @@ export function Main({
         <div className="overlay" onClick={closeEditor}>
           <ItemEdit
             item={editing ?? undefined}
-            calendarAccounts={calendarAccounts}
             onSubmit={handleSubmit}
             onClose={closeEditor}
           />

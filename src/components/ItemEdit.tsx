@@ -1,28 +1,19 @@
 import { useState, useRef, useEffect } from "react";
-import { CalendarAccount, Item } from "../types";
+import { Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { parseEventTime, parseDeadline, formatEventTime } from "../lib/parseEventTime";
 
 interface ItemEditProps {
   /** Omit to create a new item. */
   item?: Item;
-  /** Every linked Google account, for the destination step's choices. */
-  calendarAccounts: CalendarAccount[];
-  /**
-   * Default the destination step to the first calendar account rather than
-   * Notion. The calendar view's "new event" sets this; the tasks view's
-   * "new item" leaves it Notion.
-   */
-  preferCalendar?: boolean;
   onSubmit: (fields: ItemFields) => void;
   onClose: () => void;
 }
 
-type Step = "where" | "name" | "time" | "deadline" | "description";
+type Step = "name" | "time" | "deadline" | "description";
 const STEPS: Step[] = ["name", "time", "deadline", "description"];
 
 const PROMPTS: Record<Step, string> = {
-  where:       "where   ",
   name:        "name    ",
   time:        "time    ",
   deadline:    "deadline",
@@ -30,7 +21,6 @@ const PROMPTS: Record<Step, string> = {
 };
 
 const HINTS: Record<Step, string> = {
-  where:       "←/→ switch · ↵ next",
   name:        "",
   time:        "clear for none",
   deadline:    "clear for none",
@@ -64,73 +54,7 @@ function composeTimeValue(date: string, start: string, end: string): string {
   return end ? `${date} ${start}-${end}` : `${date} ${start}`;
 }
 
-/**
- * One choice in the destination step: Notion, or one specific calendar
- * within one linked account. `accountId`/`calendarId` are carried directly
- * rather than encoded into `value` — an opaque unique key is all `value`
- * needs to be, so nothing has to parse it back apart later.
- */
-interface Destination {
-  value: string;
-  label: string;
-  accountId: string | null;
-  calendarId: string | null;
-}
-
-const NOTION_DESTINATION: Destination = {
-  value: "notion",
-  label: "notion",
-  accountId: null,
-  calendarId: null,
-};
-
-/**
- * Flattens every linked account's synced calendars into one destination
- * per calendar — an account syncing both "primary" and "lab bookings" gets
- * two entries, not one, so which calendar a new event lands on is a choice
- * up front rather than always whatever happened to sync first. An account
- * with nothing configured to sync (or exactly one) gets a single entry
- * labelled by the account alone, since there's nothing to disambiguate.
- */
-function destinationsFor(accounts: CalendarAccount[]): Destination[] {
-  const entries: Destination[] = [NOTION_DESTINATION];
-  for (const account of accounts) {
-    if (account.calendars.length <= 1) {
-      entries.push({
-        value: `acct:${account.id}`,
-        // The calendar's own name ("Personal", "Work") reads far better here
-        // than the linked account's email — fall back to the email only if
-        // nothing's synced yet and there's no name to show.
-        label: account.calendars[0]?.name || account.account || "calendar",
-        accountId: account.id,
-        calendarId: account.calendars[0]?.id ?? null,
-      });
-    } else {
-      for (const cal of account.calendars) {
-        entries.push({
-          value: `acct:${account.id}:${cal.id}`,
-          label: cal.name,
-          accountId: account.id,
-          calendarId: cal.id,
-        });
-      }
-    }
-  }
-  return entries;
-}
-
-/** The destination for a fresh "new item" — the flagged default account (or
- *  the first linked one, matching the backend's own fallback) and, within
- *  it, whichever calendar entry represents its default. Notion if nothing
- *  is linked at all. */
-function defaultDestinationValue(accounts: CalendarAccount[], destinations: Destination[]): string {
-  const account = accounts.find((a) => a.default) ?? accounts[0];
-  if (!account) return "notion";
-  return destinations.find((d) => d.accountId === account.id)?.value ?? "notion";
-}
-
-function displayValue(step: Step, raw: string, destinations: Destination[]): string {
-  if (step === "where") return destinations.find((d) => d.value === raw)?.label ?? raw;
+function displayValue(step: Step, raw: string): string {
   if (!raw.trim()) return "—";
   if (step === "time") {
     const { start, end } = parseEventTime(raw);
@@ -140,14 +64,7 @@ function displayValue(step: Step, raw: string, destinations: Destination[]): str
   return raw;
 }
 
-function initialValues(
-  item: Item | undefined,
-  defaultDestination: string
-): Record<Step, string> {
-  // Only meaningful for a *new* item — the where step never renders when
-  // editing (an item can't change which service it belongs to), so this
-  // value is computed but unused in that case.
-  const where = item ? "notion" : defaultDestination;
+function initialValues(item: Item | undefined): Record<Step, string> {
   // New items' date fields default to today rather than an empty
   // "yyyy-mm-dd" — the year and month are almost always right already, so
   // there's normally just a day to adjust; the "clear" button next to each
@@ -156,7 +73,6 @@ function initialValues(
   const time = formatEventTime(item?.start ?? null, item?.end ?? null);
   const deadline = item?.deadline ?? "";
   return {
-    where,
     name: item?.name ?? "",
     time: item ? time : time || todayISODate(),
     deadline: item ? deadline : deadline || todayISODate(),
@@ -164,54 +80,24 @@ function initialValues(
   };
 }
 
-export function ItemEdit({
-  item,
-  calendarAccounts,
-  preferCalendar = false,
-  onSubmit,
-  onClose,
-}: ItemEditProps) {
-  const destinations = destinationsFor(calendarAccounts);
-  const defaultDestination = preferCalendar
-    ? defaultDestinationValue(calendarAccounts, destinations)
-    : "notion";
-  const seed = initialValues(item, defaultDestination);
-  // A choice only exists once a calendar is linked — with nothing to pick
-  // between, the step would just be an extra keystroke for no reason.
-  const offerWhere = destinations.length > 1 && !item;
-  const steps: Step[] = offerWhere ? ["where", ...STEPS] : STEPS;
+export function ItemEdit({ item, onSubmit, onClose }: ItemEditProps) {
+  const seed = initialValues(item);
   const [stepIndex, setStepIndex] = useState(0);
   const [completed, setCompleted] = useState<{ step: Step; raw: string }[]>([]);
-  const [current, setCurrent] = useState(seed[steps[0]]);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [current, setCurrent] = useState(seed[STEPS[0]]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const choiceRef = useRef<HTMLButtonElement>(null);
 
-  const currentStep = steps[stepIndex];
+  const currentStep = STEPS[stepIndex];
 
   // Focuses the field for a newly-entered step. Keyed on stepIndex alone —
   // keying this on `current` as well reruns it on every keystroke, which
   // reselects the whole input and makes each new character overwrite the
   // last instead of appending.
   useEffect(() => {
-    if (currentStep === "where") {
-      choiceRef.current?.focus();
-      return;
-    }
     inputRef.current?.focus();
     // date/time inputs throw on select() — it only applies to text-like ones.
     if (inputRef.current?.type === "text") inputRef.current.select();
   }, [stepIndex]);
-
-  // The destination step is a row of buttons, not a text field: switching
-  // which one is selected (by click or arrow key) has to move real DOM focus
-  // along with it, or keyboard navigation and screen readers lose track of
-  // the control. This only ever touches the button, never the text input.
-  useEffect(() => {
-    if (currentStep === "where") {
-      choiceRef.current?.focus();
-    }
-  }, [current, currentStep]);
 
   const handleBack = () => {
     if (stepIndex === 0) return;
@@ -226,8 +112,8 @@ export function ItemEdit({
 
     const newCompleted = [...completed, { step: currentStep, raw: current }];
 
-    if (stepIndex < steps.length - 1) {
-      const next = steps[stepIndex + 1];
+    if (stepIndex < STEPS.length - 1) {
+      const next = STEPS[stepIndex + 1];
       setCompleted(newCompleted);
       setCurrent(seed[next]);
       setStepIndex(stepIndex + 1);
@@ -238,15 +124,6 @@ export function ItemEdit({
       newCompleted.map(({ step, raw }) => [step, raw])
     ) as Record<Step, string>;
     const { start, end } = parseEventTime(vals.time ?? "");
-    const destination = destinations.find((d) => d.value === vals.where) ?? NOTION_DESTINATION;
-    const source = destination.accountId ? "google" : "notion";
-
-    // Google has nowhere to put an item with no time. Catching it here beats
-    // letting the request fail, because the typed values are still on screen.
-    if (source === "google" && !start) {
-      setProblem("a calendar event needs a time — go back and add one");
-      return;
-    }
 
     onSubmit({
       name: vals.name.trim(),
@@ -254,9 +131,6 @@ export function ItemEdit({
       end,
       deadline: parseDeadline(vals.deadline ?? ""),
       description: vals.description.trim() || null,
-      source,
-      account_id: destination.accountId ?? undefined,
-      calendar_id: destination.calendarId,
     });
   };
 
@@ -267,28 +141,6 @@ export function ItemEdit({
     else if (e.key === "Escape") onClose();
   };
 
-  /** Steps the destination step to the next/previous choice. */
-  const switchDestination = (delta: number) => {
-    setProblem(null);
-    setCurrent((v) => {
-      const i = destinations.findIndex((d) => d.value === v);
-      const next = destinations[(i + delta + destinations.length) % destinations.length];
-      return next.value;
-    });
-  };
-
-  /**
-   * Keys for the destination step. Enter is stopped from reaching the button
-   * it is aimed at, which would otherwise fire that button's click as well as
-   * advancing the step.
-   */
-  const handleChoiceKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleEnter(); }
-    else if (e.key === "Escape") onClose();
-    else if (e.key === "ArrowLeft") { e.preventDefault(); switchDestination(-1); }
-    else if (e.key === "ArrowRight" || e.key === "Tab") { e.preventDefault(); switchDestination(1); }
-  };
-
   return (
     <div className="quickadd" onClick={(e) => e.stopPropagation()}>
       <div className="quickadd-title">{item ? "edit" : "new"}</div>
@@ -296,30 +148,12 @@ export function ItemEdit({
       {completed.map(({ step, raw }) => (
         <div key={step} className="quickadd-row quickadd-row--done">
           <span className="quickadd-key">{PROMPTS[step]}</span>
-          <span className="quickadd-val">{displayValue(step, raw, destinations)}</span>
+          <span className="quickadd-val">{displayValue(step, raw)}</span>
         </div>
       ))}
 
       <div className="quickadd-row quickadd-row--active">
         <span className="quickadd-key">{PROMPTS[currentStep]}</span>
-        {currentStep === "where" && (
-          <span className="quickadd-choice" onKeyDown={handleChoiceKey}>
-            {destinations.map((option) => (
-              <button
-                key={option.value}
-                ref={current === option.value ? choiceRef : undefined}
-                type="button"
-                aria-pressed={current === option.value}
-                className={`quickadd-option${
-                  current === option.value ? " quickadd-option--on" : ""
-                }`}
-                onClick={() => { setProblem(null); setCurrent(option.value); }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </span>
-        )}
         {currentStep === "time" && (() => {
           const { date, start, end } = splitTimeValue(current);
           return (
@@ -395,8 +229,6 @@ export function ItemEdit({
           />
         )}
       </div>
-
-      {problem && <div className="quickadd-problem">{problem}</div>}
 
       <div className="quickadd-hint">
         {HINTS[currentStep] && <span>{HINTS[currentStep]}</span>}

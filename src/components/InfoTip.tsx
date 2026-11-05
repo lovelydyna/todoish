@@ -11,7 +11,7 @@ interface InfoTipProps {
  *
  * Focusable and described via aria, so the text is reachable without a mouse.
  */
-export function InfoTip({ children }: InfoTipProps) {
+function InfoTip({ children }: InfoTipProps) {
   const [open, setOpen] = useState(false);
   const id = useId();
 

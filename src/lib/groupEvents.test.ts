@@ -21,11 +21,7 @@ const base: Item = {
   description: null,
   created_time: null,
   last_edited_time: null,
-  source: "notion",
   data_source_id: null,
-  calendar_id: null,
-  account_id: null,
-  url: null,
 };
 
 const now = new Date("2026-04-20T12:00:00");

@@ -5,7 +5,6 @@ import { playComplete } from "../lib/sounds";
 import { WindowControls } from "../components/WindowControls";
 import { KeybindingsEditor } from "../components/KeybindingsEditor";
 import { useKeybindings } from "../hooks/useKeybindings";
-import { CalendarSettings } from "../components/CalendarSettings";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { FieldLabel } from "../components/InfoTip";
 import { Item, SchemaOverride } from "../types";
@@ -22,9 +21,6 @@ import {
 interface SetupProps {
   onComplete: () => void;
   onCancel?: () => void;
-  /** Called after the calendar link changes, so the item list stops showing
-   *  stale rows until the next 60s sync tick. */
-  onCalendarChanged?: () => void;
   initialApiKey?: string;
   /** Which discovered Notion data sources feed task/calendar. Empty = every
    *  shared database. */
@@ -100,7 +96,6 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
 export function Setup({
   onComplete,
   onCancel,
-  onCalendarChanged,
   initialApiKey = "",
   initialEnabledDataSources = [],
   initialSchemaOverrides = {},
@@ -381,12 +376,6 @@ export function Setup({
           </>
         )}
 
-        {/* Only in settings: first run is about getting Notion working, and
-            the calendar is an addition to a working setup, not part of one. */}
-        {isSettings && showTab("calendar") && (
-          <CalendarSettings onChanged={onCalendarChanged} />
-        )}
-
         {isSettings && showTab("appearance") && (
           <>
             <div className="field">
@@ -524,10 +513,7 @@ export function Setup({
         {error && <div className="setup-error">{error}</div>}
         {saved && <div className="setup-saved">saved</div>}
 
-        {/* History is a read-only log — nothing on that tab to save. The
-            calendar tab's Google account section persists through its own
-            commands as you go, but the Notion fields alongside it still need
-            the save button. */}
+        {/* History is a read-only log — nothing on that tab to save. */}
         {!(isSettings && tab === "history") && (
           <button className="setup-submit" type="submit" disabled={loading}>
             {loading ? "saving…" : isSettings ? "save" : "connect"}

@@ -292,11 +292,26 @@ fn detect_schema(properties: &Value) -> Schema {
         })
     };
 
+    // If nothing matched by name but exactly one property of that type is left
+    // unclaimed, use it — a database rarely has two date columns it didn't
+    // bother to name conventionally, so the sole candidate is almost always
+    // the intended one.
+    let sole_unclaimed = |wanted: &str, taken: &[&str]| -> Option<String> {
+        let mut candidates = entries
+            .iter()
+            .filter(|(k, v)| type_of(v) == wanted && !taken.iter().any(|t| k.eq_ignore_ascii_case(t)));
+        match (candidates.next(), candidates.next()) {
+            (Some((k, _)), None) => Some((*k).clone()),
+            _ => None,
+        }
+    };
+
     // Deadline resolves first so a database with both "Date" and "Deadline"
     // can't have the deadline column swallowed by the scheduled-time role.
     let deadline = named(&["Deadline", "Due", "Due Date", "Due date"], &["date"], &[]);
     let claimed: Vec<&str> = deadline.iter().map(|s| s.as_str()).collect();
-    let time = named(&["Time", "Date", "When", "Scheduled"], &["date"], &claimed);
+    let time = named(&["Time", "Date", "When", "Scheduled"], &["date"], &claimed)
+        .or_else(|| sole_unclaimed("date", &claimed));
 
     let status = by_type("status")
         .map(|name| {
@@ -319,7 +334,8 @@ fn detect_schema(properties: &Value) -> Schema {
         status,
         time,
         deadline,
-        description: named(&["Description", "Notes", "Details"], &["rich_text"], &[]),
+        description: named(&["Description", "Notes", "Details"], &["rich_text"], &[])
+            .or_else(|| sole_unclaimed("rich_text", &[])),
     }
 }
 
@@ -582,14 +598,6 @@ fn describe_api_error(status: reqwest::StatusCode, text: &str) -> String {
     }
 }
 
-/// Where a row came from, and therefore where writes to it go back to.
-pub const SOURCE_NOTION: &str = "notion";
-pub const SOURCE_GOOGLE: &str = "google";
-
-fn source_notion() -> String {
-    SOURCE_NOTION.to_string()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
@@ -605,29 +613,12 @@ pub struct Item {
     pub created_time: Option<String>,
     pub last_edited_time: Option<String>,
 
-    /// `"notion"` or `"google"`. Everything that writes routes on this, so a
-    /// row always goes back to the service it came from.
-    #[serde(default = "source_notion")]
-    pub source: String,
-    /// Which Notion database (data source) this row lives in. `None` for
-    /// Google rows. More than one database can be shared with the
-    /// integration, each with its own property names and status options, so
-    /// a write has to know which one a row's schema comes from.
+    /// Which Notion database (data source) this row lives in. More than one
+    /// database can be shared with the integration, each with its own
+    /// property names and status options, so a write has to know which one a
+    /// row's schema comes from.
     #[serde(default)]
     pub data_source_id: Option<String>,
-    /// Which Google calendar holds this event. `None` for Notion rows.
-    #[serde(default)]
-    pub calendar_id: Option<String>,
-    /// Which linked Google account this event belongs to. `None` for Notion
-    /// rows. Two accounts can each have a calendar literally called
-    /// "primary" with independently-numbered events, so writes must route on
-    /// the account, not just the calendar id.
-    #[serde(default)]
-    pub account_id: Option<String>,
-    /// Where "open in…" should go. `None` for Notion rows, whose URL is
-    /// derived from the page id.
-    #[serde(default)]
-    pub url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -711,11 +702,7 @@ fn page_to_item(page: NotionPage, source: &Source) -> Option<Item> {
         description: by_name(&schema.description, extract_rich_text),
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
-        source: source_notion(),
         data_source_id: Some(source.data_source_id.clone()),
-        calendar_id: None,
-        account_id: None,
-        url: None,
     })
 }
 
@@ -859,8 +846,8 @@ fn find_source<'a>(sources: &'a [Source], data_source_id: &str) -> Result<&'a So
 }
 
 /// Creates a page in whichever database is alphabetically first among the
-/// ones selected to sync — the same "default" role a flagged Google account
-/// plays, absent any UI for choosing a destination among several.
+/// ones selected to sync, absent any UI for choosing a destination among
+/// several.
 pub async fn create_item(
     api_key: &str,
     overrides: &HashMap<String, SchemaOverride>,
@@ -917,11 +904,7 @@ pub async fn create_item(
         description: description.filter(|s| !s.is_empty()).map(str::to_string),
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
-        source: source_notion(),
         data_source_id: Some(source.data_source_id.clone()),
-        calendar_id: None,
-        account_id: None,
-        url: None,
     })
 }
 
@@ -1111,6 +1094,44 @@ mod tests {
         let schema = detect_schema(&props);
         assert_eq!(schema.deadline.as_deref(), Some("Deadline"));
         assert_eq!(schema.time, None, "Deadline must not double as the scheduled time");
+    }
+
+    #[test]
+    fn sole_unnamed_date_property_is_used_as_time() {
+        // Mirrors a real "events" database: one date column, named for what
+        // it holds rather than "Date"/"Time", and no deadline column at all.
+        let props = json!({
+            "Title": { "type": "title" },
+            "Event time": { "type": "date" },
+            "Event type": { "type": "select" },
+            "Course": { "type": "select" },
+            "Notes": { "type": "rich_text" },
+        });
+        let schema = detect_schema(&props);
+        assert_eq!(schema.time.as_deref(), Some("Event time"));
+        assert_eq!(schema.deadline, None);
+    }
+
+    #[test]
+    fn two_unnamed_date_properties_are_left_ambiguous() {
+        let props = json!({
+            "Title": { "type": "title" },
+            "Starts": { "type": "date" },
+            "Ends": { "type": "date" },
+        });
+        let schema = detect_schema(&props);
+        assert_eq!(schema.time, None, "can't guess which of two unnamed date columns is meant");
+    }
+
+    #[test]
+    fn sole_unnamed_rich_text_property_is_used_as_description() {
+        let props = json!({
+            "Title": { "type": "title" },
+            "Due date": { "type": "date" },
+            "Next action": { "type": "rich_text" },
+        });
+        let schema = detect_schema(&props);
+        assert_eq!(schema.description.as_deref(), Some("Next action"));
     }
 
     #[test]

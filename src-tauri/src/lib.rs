@@ -1,8 +1,6 @@
 mod commands;
 mod config;
-mod gcal;
 mod http;
-mod merge;
 mod notes;
 mod notion;
 mod sync;
@@ -17,35 +15,37 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectStat
 /// Window corner radius. Kept in sync with `--window-radius` in index.css.
 const WINDOW_RADIUS: f64 = 14.0;
 
-/// Brings the window to the front, or hides it if it is already frontmost.
-fn toggle_window(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else { return };
-
-    let visible = window.is_visible().unwrap_or(false);
-    let focused = window.is_focused().unwrap_or(false);
-
-    if visible && focused {
-        let _ = window.hide();
-        return;
-    }
-
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
-
-    // Without this the window can rise behind the app you pressed the key in.
+/// Brings the window back from anywhere it can go: ordered out, minimized, or
+/// hidden with the whole app (macOS ⌘H / "Hide Todoish"), which
+/// `window.show()` alone cannot undo — the cause of issue #3.
+fn show_window(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
-    {
-        use tauri::ActivationPolicy;
-        let _ = app.set_activation_policy(ActivationPolicy::Regular);
+    let _ = app.show();
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     }
 }
 
-/// Binds the configured system-wide hotkey. A blank setting disables it, and a
+/// Brings the window to the front, or hides it if it is already frontmost.
+fn toggle_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else { return };
+    if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
+        let _ = window.hide();
+    } else {
+        show_window(app);
+    }
+}
+
+/// Binds the configured system-wide hotkey, replacing any earlier one so a
+/// change in settings applies immediately. A blank setting disables it, and a
 /// shortcut the OS refuses (already taken by another app) is skipped rather
-/// than failing startup — the tray icon still opens the window.
-fn register_global_shortcut(app: &tauri::AppHandle) {
+/// than failing — the tray icon still opens the window.
+pub(crate) fn register_global_shortcut(app: &tauri::AppHandle) {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    let _ = app.global_shortcut().unregister_all();
 
     let accelerator = config::load_config()
         .map(|c| c.global_shortcut)
@@ -97,12 +97,6 @@ pub fn run() {
             commands::get_autostart,
             commands::set_autostart,
             commands::open_in_notion,
-            commands::calendar_accounts,
-            commands::connect_calendar,
-            commands::disconnect_calendar,
-            commands::set_default_calendar_account,
-            commands::list_calendars,
-            commands::save_calendar_selection,
             commands::save_note,
             commands::list_notes,
             commands::read_note,
@@ -194,28 +188,36 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "show" => show_window(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                        show_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Todoish");
+        // ⌘W and the red button close the window; there is only one, so a
+        // destroyed window could never be shown again. Hide it instead.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while running Todoish")
+        .run(|app, event| {
+            // Clicking the Dock icon while the window is hidden.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_window(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

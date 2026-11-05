@@ -1,16 +1,10 @@
 import { Item, EventGroup } from "../types";
-import { parseDueDate } from "./groupTasks";
+import { parseDueDate, startOfDay } from "./groupTasks";
 
 /** The date an event sorts by: its start time, or its deadline when untimed. */
 export function eventAnchor(event: Item): Date | null {
   const raw = event.start ?? event.deadline;
   return raw ? parseDueDate(raw) : null;
-}
-
-function startOfDay(d: Date): Date {
-  const copy = new Date(d);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
 }
 
 /** Whole days from today to `date`: 0 = today, 1 = tomorrow, -1 = yesterday. */

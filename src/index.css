@@ -365,8 +365,18 @@ input {
 }
 
 .group-label--now       { color: var(--accent-now); }
-.group-label--this-week { color: var(--accent-next); }
-.group-label--next      { color: var(--accent-next); }
+/* The one group besides NOW whose rows get a quiet accent tint (see
+   .task-row--this-week) — the heading gets the matching chip so it reads
+   as "soon" at a glance instead of blending into NEXT WEEK/LATER. */
+.group-label--this-week {
+  display: inline-block;
+  color: var(--accent-next);
+  background: rgba(122, 191, 142, 0.14);
+  border-radius: 4px;
+  padding: 2px 8px 3px;
+  margin: 2px 0 4px 16px;
+}
+.group-label--next      { color: var(--text-dim); }
 .group-label--later     { color: var(--accent-later); }
 
 .group-label--done  { color: var(--text-faint); }
@@ -2123,151 +2133,9 @@ input {
   padding: 2px 4px;
 }
 
-/* ─── Notion Calendar ────────────────────────────────────── */
-/* Rows from Notion and from every linked Google calendar sit in the same
-   list, so each gets a small dot in its own colour — Notion is one neutral
-   tone, each calendar its own deterministic hue — rather than a shared
-   glyph that only distinguished "calendar" from "not calendar".
-   Sits in the gutter just left of the name: the name is flex:1, so a marker
-   placed after it would be shunted to the far edge instead of reading as a
-   property of the row. */
-.row-source-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  flex-shrink: 0;
-  margin: 0 6px 0 2px;
-}
-
-.event-row--calendar .event-time { color: var(--accent-blue); opacity: 0.8; }
-
-/* A calendar that failed while the tasks loaded fine. Amber, not red: the
-   list on screen is still correct, it is just missing the events. */
-.calendar-warning {
-  padding: 6px 16px;
-  background: rgba(200, 150, 60, 0.16);
-  color: var(--accent-now);
-  border-bottom: 1px solid rgba(200, 150, 60, 0.22);
-  font-size: 12px;
-}
-
-/* Destination step in the add form. */
-.quickadd-choice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.quickadd-option {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--text-dim);
-  font-family: var(--font);
-  font-size: 13px;
-  padding: 1px 9px;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-.quickadd-option--on {
-  border-color: var(--accent-blue);
-  color: var(--accent-blue);
-}
-
-.quickadd-option:focus-visible {
-  outline: 1px solid var(--accent-blue);
-  outline-offset: 1px;
-}
-
 .quickadd-problem {
   color: var(--accent-red);
   font-size: 12px;
   margin-top: 6px;
 }
 
-/* ─── Calendar settings ──────────────────────────────────── */
-.calendar-account {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.calendar-account-mail { color: var(--text); overflow-wrap: anywhere; }
-.calendar-account-state { color: var(--text-faint); font-size: 12px; }
-
-.calendar-account-default {
-  color: var(--accent-blue);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin-left: 8px;
-}
-
-.calendar-account-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.calendar-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 8px;
-}
-
-.calendar-choice {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 3px 2px;
-}
-
-.calendar-choice input { accent-color: var(--accent-blue); }
-.calendar-choice--readonly { opacity: 0.5; }
-.calendar-choice-note { color: var(--text-faint); font-size: 11px; }
-
-/* One linked account: its account row plus that account's own calendar
-   picker, visually grouped so several accounts don't blur into one list. */
-.calendar-account-block {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.calendar-account-block:first-child { padding-top: 0; }
-.calendar-account-block .field { margin-top: 10px; }
-
-.calendar-add-account-btn {
-  background: none;
-  border: 1px dashed var(--border);
-  border-radius: 6px;
-  color: var(--text-dim);
-  font-family: var(--font);
-  font-size: 13px;
-  padding: 7px 10px;
-  margin-top: 10px;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-.calendar-add-account-btn:hover { color: var(--text); border-color: var(--accent-blue); }
-
-.calendar-add-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.calendar-add-actions .setup-submit { flex: 1; }
