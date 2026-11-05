@@ -133,7 +133,8 @@ export function Main({
       else if (key === bindings["expand"] && selected)
         setExpandedId((id) => (id === selected.id ? null : selected.id));
       else if (key === bindings["calendar"]) onCalendar();
-      else if (key === bindings["notes-view"]) onNotes();
+      // preventDefault: otherwise the key also types into the notes prompt.
+      else if (key === bindings["notes-view"]) { e.preventDefault(); onNotes(); }
       else if (key === bindings["today"]) {
         // "Today" in a list is the top of NOW — what is due now or overdue.
         setSelectedIndex(0);

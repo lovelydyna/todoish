@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalKey, lineCol, VimBuffer } from "./vim";
+import { normalKey, lineCol, lineToPos, VimBuffer } from "./vim";
 
 const buf = (text: string, cursor = 0, register = ""): VimBuffer => ({ text, cursor, register });
 
@@ -70,5 +70,18 @@ describe("normalKey edits", () => {
 describe("lineCol", () => {
   it("is 1-based", () => {
     expect(lineCol("abc\ndef", 5)).toEqual({ line: 2, col: 2 });
+  });
+});
+
+describe("dG and lineToPos", () => {
+  it("dG deletes to the end of the file, and from gg clears it", () => {
+    expect(normalKey(buf("one\ntwo\nthree", 5), "G", "d")).toMatchObject({ text: "one", register: "two\nthree\n" });
+    expect(normalKey(buf("one\ntwo", 0), "G", "d").text).toBe("");
+  });
+
+  it("lineToPos finds a line's start and clamps out-of-range numbers", () => {
+    expect(lineToPos("one\ntwo\nthree", 3)).toBe(8);
+    expect(lineToPos("one\ntwo", 99)).toBe(4);
+    expect(lineToPos("one\ntwo", 0)).toBe(0);
   });
 });

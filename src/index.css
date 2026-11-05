@@ -239,82 +239,6 @@ input {
 }
 
 
-/* The rendered read of the same markdown the toolbar writes — same font and
-   flow as the textarea it replaces, so toggling doesn't jolt the page. */
-.notes-write-preview {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.notes-write-preview h1,
-.notes-write-preview h2,
-.notes-write-preview h3 {
-  font-weight: 600;
-  margin: 0.6em 0 0.3em;
-  line-height: 1.3;
-}
-.notes-write-preview h1 { font-size: 20px; }
-.notes-write-preview h2 { font-size: 17px; }
-.notes-write-preview h3 { font-size: 15px; }
-
-.notes-write-preview p { margin: 0 0 0.8em; }
-.notes-write-preview p:last-child { margin-bottom: 0; }
-
-.notes-write-preview strong { font-weight: 700; }
-.notes-write-preview em { font-style: italic; }
-.notes-write-preview del { text-decoration: line-through; color: var(--text-dim); }
-.notes-write-preview u { text-decoration: underline; }
-
-.notes-write-preview a { color: var(--accent-blue); text-decoration: underline; }
-
-.notes-write-preview code {
-  background: rgba(var(--overlay-rgb), 0.09);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 0.9em;
-}
-
-.notes-write-preview pre {
-  background: rgba(var(--overlay-rgb), 0.06);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin: 0 0 0.8em;
-  overflow-x: auto;
-}
-.notes-write-preview pre code { background: none; padding: 0; }
-
-.notes-write-preview blockquote {
-  border-left: 3px solid var(--border);
-  margin: 0 0 0.8em;
-  padding: 0 0 0 12px;
-  color: var(--text-dim);
-}
-
-.notes-write-preview ul,
-.notes-write-preview ol {
-  margin: 0 0 0.8em;
-  padding-left: 22px;
-}
-.notes-write-preview li { margin: 2px 0; }
-
-.notes-write-preview ul.notes-preview-checklist {
-  list-style: none;
-  padding-left: 2px;
-}
-.notes-write-preview ul.notes-preview-checklist li {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-}
-.notes-write-preview ul.notes-preview-checklist input { margin: 0; }
-
-.notes-preview-empty { color: var(--text-faint); }
 
 
 
@@ -1466,103 +1390,103 @@ button.kb-row:hover { background: var(--hover); box-shadow: none; }
 
 .quickadd-problem { margin-top: 6px; font-size: 12px; color: var(--accent-red); }
 
-/* ─── Notes: terminal-style browser and vim editor ───────── */
-/* Monospace throughout, like the terminal it borrows its keys from. */
-.notes-view { --vim-font: var(--font-mono); }
-
-.vim-path {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-  padding: 10px 16px 8px;
-  border-bottom: 1px solid var(--hairline);
-  font-family: var(--vim-font);
-  font-size: 12.5px;
-  color: var(--text-dim);
-}
-.vim-crumb {
-  padding: 1px 2px;
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: inherit;
-  color: var(--accent-blue);
-}
-button.vim-crumb:hover { background: var(--hover); }
-.vim-crumb--file { color: var(--text); }
-.vim-sep { color: var(--text-faint); }
-.vim-dirty { margin-left: 8px; color: var(--accent-now); }
-
-.vim-browser {
+/* ─── Notes: terminal and vim editor ─────────────────────── */
+/* Monospace and no chrome: a prompt, the text, and a status line. */
+.term {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 8px;
-  outline: none;
-  font-family: var(--vim-font);
-  font-size: 14px;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
-.vim-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-height: 34px;
-  padding: 7px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.vim-row:hover { background: var(--hover); }
-.vim-row--selected,
-.vim-row--selected:hover { background: var(--selected-bg); box-shadow: inset 2px 0 0 var(--accent-blue); }
-.vim-name { flex-shrink: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.vim-row--dir .vim-name { color: var(--accent-blue); font-weight: 600; }
-.vim-preview-line {
+.term-line { white-space: pre-wrap; word-break: break-word; }
+.term-line--err { color: var(--accent-red); }
+.term-line--out { color: var(--text-dim); }
+.term-prompt { color: var(--accent-blue); }
+
+/* `ls` output wraps like columns. */
+.term-item { display: inline-block; margin-right: 18px; color: var(--text); }
+.term-item--dir { color: var(--accent-blue); font-weight: 600; }
+
+.term-input-line { display: flex; }
+.term-input {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font);
-  font-size: 12.5px;
-  color: var(--text-faint);
+  padding: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  caret-color: var(--accent-blue);
 }
-.vim-time { flex-shrink: 0; margin-left: auto; font-size: 12px; color: var(--text-faint); }
+.term-input:focus-visible { outline: none; }
 
-.vim-empty { padding: 24px 8px; font-family: var(--font); font-size: 13px; color: var(--text-dim); }
+.vim-editor { display: flex; flex: 1; min-height: 0; }
+
+.vim-gutter,
+.vim-text {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* Line numbers scroll with the text (synced in NotesPanel). */
+.vim-gutter {
+  flex-shrink: 0;
+  min-width: 44px;
+  padding-left: 8px;
+  padding-right: 10px;
+  overflow: hidden;
+  text-align: right;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.vim-ln--current { color: var(--accent-now); }
 
 .vim-text {
   flex: 1;
-  min-height: 0;
-  padding: 12px 16px;
+  min-width: 0;
+  padding-left: 0;
+  padding-right: 16px;
   border: none;
   outline: none;
   resize: none;
   background: none;
   color: var(--text);
-  font-family: var(--vim-font);
-  font-size: 14px;
-  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
   user-select: text;
   -webkit-user-select: text;
   caret-color: var(--accent-blue);
 }
+.vim-text:focus-visible { outline: none; }
 /* Normal mode: the one-character selection is the block cursor. */
 .vim-text--normal { caret-color: transparent; }
 .vim-text--normal::selection { background: var(--accent-blue); color: var(--on-accent); }
+.vim-text--visual { caret-color: transparent; }
+.vim-text--visual::selection,
 .vim-text--insert::selection { background: color-mix(in srgb, var(--accent-blue) 30%, transparent); }
-
-.vim-preview { padding: 12px 16px; }
 
 .vim-status {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  height: 34px;
+  height: 32px;
   padding: 0 10px;
-  border-top: 1px solid var(--hairline);
-  font-family: var(--vim-font);
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-dim);
 }
@@ -1577,8 +1501,8 @@ button.vim-crumb:hover { background: var(--hover); }
   background: var(--accent-blue);
 }
 .vim-mode--insert { background: var(--accent-next); }
-.vim-mode--files  { background: var(--text-dim); }
-.vim-message { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font); }
+.vim-mode--visual { background: var(--accent-now); }
+.vim-message { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vim-pos { color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
 .vim-command { display: flex; align-items: center; gap: 2px; flex: 1; color: var(--text); }
@@ -1588,7 +1512,7 @@ button.vim-crumb:hover { background: var(--hover); }
   outline: none;
   background: none;
   color: var(--text);
-  font-family: var(--vim-font);
+  font-family: var(--font-mono);
   font-size: 13px;
   caret-color: var(--accent-blue);
 }

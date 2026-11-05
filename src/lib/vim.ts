@@ -3,7 +3,7 @@
  * (text, cursor) so it can be tested without a DOM. Normal mode only — in
  * Insert mode the textarea types as usual until Esc.
  *
- * Supported: h j k l, w b, 0 $, gg G, x, dd, yy, p P, i a I A o O.
+ * Supported: h j k l, w b, 0 $, gg G, x, dd, dG, yy, p P, i a I A o O.
  * shortcut: no counts, visual mode or text objects; add them here if wanted.
  */
 
@@ -109,6 +109,13 @@ export function normalKey(buf: VimBuffer, key: string, pending = ""): VimResult 
         : text.slice(0, Math.max(0, start - 1));
       return { text: next, register: line, cursor: clampNormal(next, Math.min(start, next.length)) };
     }
+    case "dG": {
+      // From this line to the end of the file; after gg this clears it all.
+      const start = lineStart(text, cursor);
+      const next = text.slice(0, Math.max(0, start - 1));
+      const taken = text.slice(start);
+      return { text: next, register: taken.endsWith("\n") ? taken : taken + "\n", cursor: lineStart(next, next.length) };
+    }
     case "yy":
       return { text, cursor, register: currentLine(text, cursor).line };
     case "p": {
@@ -143,6 +150,13 @@ export function normalKey(buf: VimBuffer, key: string, pending = ""): VimResult 
     default:
       return { text, cursor, register };
   }
+}
+
+/** Cursor position at the start of 1-based line `n`, clamped to the file. */
+export function lineToPos(text: string, n: number): number {
+  const lines = text.split("\n");
+  const target = Math.min(Math.max(1, n), lines.length);
+  return lines.slice(0, target - 1).reduce((pos, l) => pos + l.length + 1, 0);
 }
 
 /** 1-based line and column, for the status line. */

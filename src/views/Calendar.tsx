@@ -167,7 +167,8 @@ export function Calendar({
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
-      else if (key === bindings["notes-view"]) onNotes();
+      // preventDefault: otherwise the key also types into the notes prompt.
+      else if (key === bindings["notes-view"]) { e.preventDefault(); onNotes(); }
       else if (key === bindings["notes"]) { e.preventDefault(); onNotes(true); }
     },
     [editingOverlay, confirmDelete, selected, flat, bindings, selectedDay, showMonth,
