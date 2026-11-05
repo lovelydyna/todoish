@@ -32,10 +32,10 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
           under the name, so nothing sits in a column of its own. */}
       <div className="event-row-main">
         <StatusBox status={event.status} onCycle={onCycle} />
-        <div className="event-text">
+        <div className="row-text">
           <span className="event-name">{event.name}</span>
           {(time || deadline) && (
-            <span className="event-meta">
+            <span className="row-meta">
               {time}
               {time && deadline && " · "}
               {deadline && <span className={overdue ? "due--overdue" : undefined}>{deadline}</span>}

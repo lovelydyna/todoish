@@ -877,17 +877,7 @@ select:focus-visible {
 .task-has-note { display: inline-flex; color: var(--text-faint); }
 .task-has-note .icon { width: 13px; height: 13px; }
 
-/* Due labels: "today" → "Today" without touching the shared helper. */
-.due {
-  display: inline-block;
-  flex-shrink: 0;
-  font-size: 13px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.due::first-letter { text-transform: uppercase; }
-.due--overdue  { color: var(--accent-red); }
+.due--overdue { color: var(--accent-red); }
 
 .task-row--done .task-title {
   color: var(--text-faint);
@@ -908,21 +898,25 @@ select:focus-visible {
   -webkit-user-select: text;
 }
 
-/* Calendar rows: name on top, time and due underneath, circle level with
-   the name (as in Reminders). */
-.event-row-main { align-items: flex-start; padding: 8px 0; }
+/* Both lists: name on top, date/time underneath, circle level with the
+   name (as in Reminders). */
+.task-row-main,
+.event-row-main { align-items: flex-start; padding: 8px 0; min-height: 0; }
+.task-row-main .statusbox,
 .event-row-main .statusbox { margin-top: 2px; }
-.event-text { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+.row-text { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+.task-title,
 .event-name { line-height: 22px; }
-.event-meta {
+.row-meta {
   font-size: 13px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
-.event-meta::first-letter { text-transform: uppercase; }
+.row-meta::first-letter { text-transform: uppercase; }
+.row-meta.due--overdue { color: var(--accent-red); }
 
 /* ─── Status checkbox ────────────────────────────────────── */
 /* A ring in the group's colour (Todoist's priority circle, keyed to time

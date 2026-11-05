@@ -32,10 +32,14 @@ export function TaskRow({ item, selected, expanded, onClick, onCycle }: TaskRowP
     >
       <div className="task-row-main">
         <StatusBox status={item.status} onCycle={onCycle} />
-        <span className="task-title">{item.name}</span>
-        {hint && !isDone && (
-          <span className={`due${isOverdue(due) ? " due--overdue" : ""}`}>{hint}</span>
-        )}
+        {/* The date sits under the name, on the same left edge the eye
+            already follows, rather than in a far-right column. */}
+        <div className="row-text">
+          <span className="task-title">{item.name}</span>
+          {hint && !isDone && (
+            <span className={`row-meta${isOverdue(due) ? " due--overdue" : ""}`}>{hint}</span>
+          )}
+        </div>
       </div>
       {expanded && item.description && (
         <div className="row-description">{item.description}</div>
