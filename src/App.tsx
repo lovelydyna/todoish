@@ -145,7 +145,8 @@ export default function App() {
       );
     }
     if (view === "notes") {
-      return <Notes startNew={notesStartNew} onTasks={() => goTo("main")} onSettings={openSettings} />;
+      return <Notes startNew={notesStartNew} onTasks={() => goTo("main")}
+        onCalendar={() => goTo("calendar")} onSettings={openSettings} />;
     }
     return (
       <Main

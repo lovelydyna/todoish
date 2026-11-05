@@ -9,7 +9,10 @@ const svg = (d: string) => () => (
 );
 
 export const PlusIcon = svg("M8 3.5v9M3.5 8h9");
-export const NoteIcon = svg("M4 2.5h5.5L12 5v8.5H4zM9.5 2.5V5H12M6 8h4M6 10.5h4");
+export const EyeIcon = svg("M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z");
+export const PencilIcon = svg("M10.5 2.5l3 3-8 8H2.5v-3z");
+export const ListIcon = svg("M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01");
+export const NoteIcon =svg("M4 2.5h5.5L12 5v8.5H4zM9.5 2.5V5H12M6 8h4M6 10.5h4");
 export const GearIcon = svg(
   "M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8zM8 1.8v1.6M8 12.6v1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M1.8 8h1.6M12.6 8h1.6M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"
 );

@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { NoteSummary } from "../types";
 import { WindowControls } from "./WindowControls";
 import { IconTag } from "./IconTag";
+import { ViewSwitch } from "./ViewSwitch";
+import { EyeIcon, GearIcon, ListIcon, PencilIcon, PlusIcon } from "./Icons";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
 
@@ -163,6 +165,7 @@ interface NotesPanelProps {
   /** Skip reopening the last note and start a fresh one instead. */
   startNew?: boolean;
   onHome: () => void;
+  onCalendar: () => void;
   onSettings: () => void;
 }
 
@@ -172,7 +175,7 @@ interface NotesPanelProps {
  * icon rather than in a permanent side list — this is a page you write on,
  * not a filing cabinet.
  */
-export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
+export function NotesPanel({ startNew, onHome, onCalendar, onSettings }: NotesPanelProps) {
   const { bindings } = useKeybindings();
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -397,7 +400,8 @@ export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
       setPreviewing((v) => !v);
     }
     else if (key === bindings["settings"]) onSettings();
-  }, [bindings, selected, onSettings]);
+    else if (key === bindings["calendar"]) onCalendar();
+  }, [bindings, selected, onSettings, onCalendar]);
   useKeyboard(handleKey);
 
   return (
@@ -406,37 +410,47 @@ export function NotesPanel({ startNew, onHome, onSettings }: NotesPanelProps) {
         <div className="topbar-left">
           <WindowControls />
         </div>
-        <div className="topbar-center" data-tauri-drag-region />
+        <div className="topbar-center">
+          <ViewSwitch active="notes" onSelect={(v) => (v === "tasks" ? onHome() : onCalendar())} />
+        </div>
         <div className="topbar-right" ref={browseRef} style={{ position: "relative" }}>
-          {status === "saving" && <span className="notes-save-hint">saving…</span>}
+          {status === "saving" && <span className="syncing" aria-label="saving" />}
           {selected && (
             <IconTag label={previewing ? "edit" : "preview"} keyHint={`⌘E / ${bindings["notes-preview"]}`}>
               <button
                 type="button"
-                className={`topbar-icon-btn${previewing ? " topbar-icon-btn--on" : ""}`}
+                aria-label={previewing ? "edit" : "preview"}
+                className="topbar-icon-btn"
                 onClick={() => { setFormatting(false); setPreviewing((v) => !v); }}
-              >{previewing ? "✎" : "◎"}</button>
+              >{previewing ? <PencilIcon /> : <EyeIcon />}</button>
             </IconTag>
           )}
-          <IconTag label="browse notes" keyHint={`⌘O / ${bindings["browse-notes"]}`}>
+          <IconTag label="all notes" keyHint={`⌘O / ${bindings["browse-notes"]}`}>
             <button
               type="button"
+              aria-label="all notes"
+              aria-expanded={browsing}
               className="topbar-icon-btn"
               onClick={() => setBrowsing((v) => !v)}
-            >☰</button>
-          </IconTag>
-          <IconTag label="new note" keyHint="⌘N">
-            <button type="button" className="topbar-icon-btn" onClick={createNote}>+</button>
+            ><ListIcon /></button>
           </IconTag>
           <IconTag label="settings" keyHint={bindings["settings"]}>
-            <button className="topbar-icon-btn" onClick={onSettings}>⚙</button>
+            <button className="topbar-icon-btn" aria-label="settings" onClick={onSettings}><GearIcon /></button>
           </IconTag>
 
           {browsing && (
             <div className="notes-browse-dropdown">
+              <button
+                type="button"
+                className="notes-list-item notes-list-new"
+                title="⌘N"
+                onClick={createNote}
+              >
+                <PlusIcon /> New note
+              </button>
               {!loadingList && notes.length === 0 && (
                 <div className="notes-list-empty">
-                  nothing saved yet — [q] captures one from anywhere
+                  Nothing saved yet.
                 </div>
               )}
               {notes.map((note) => (

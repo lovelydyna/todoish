@@ -211,59 +211,31 @@ input {
 }
 
 
-/* ─── View switch (tasks ↔ calendar) ─────────────────────── */
-/* The Home/Code switch from Claude's UI: a recessed track, one raised neutral
-   chip sliding between halves. Contrast comes from elevation, not colour, so
-   it never competes with the accents the rows already use. */
+/* ─── View switch (Tasks | Calendar | Notes) ─────────────── */
+/* A macOS-style segmented control: recessed track, the current view raised. */
 .view-switch {
-  position: relative;
   display: flex;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--sunken);
-  box-shadow: inset 0 1px 2px var(--shadow-soft);
-}
-
-.view-switch-thumb {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: calc(50% - 4px);
-  height: calc(100% - 8px);
-  border-radius: 999px;
-  background: var(--raised);
-  /* Lit from above: a bright top edge, a soft drop below. */
-  box-shadow:
-    inset 0 1px 0 rgba(var(--overlay-rgb), 0.14),
-    0 1px 3px var(--shadow-soft);
-  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
-  pointer-events: none;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(var(--overlay-rgb), 0.08);
+  -webkit-app-region: no-drag;
 }
 
 .view-switch-btn {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
   height: 24px;
-  color: var(--text-faint);
-  border-radius: 999px;
-  transition: color 200ms ease;
+  padding: 0 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: background 120ms, color 120ms;
 }
-
-.view-switch-btn svg { width: 15px; height: 15px; display: block; }
-
-.view-switch-btn:hover { color: var(--text-dim); }
-
+.view-switch-btn:hover { color: var(--text); }
 .view-switch-btn--active {
+  background: var(--raised);
   color: var(--text);
-  font-weight: 600;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .view-switch-thumb { transition: none; }
+  box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 
@@ -529,6 +501,15 @@ input {
   text-align: left;
 }
 .notes-list-item:last-child { border-bottom: none; }
+.notes-list-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 13px;
+  color: var(--accent-blue);
+}
+.notes-list-new .icon { width: 14px; height: 14px; }
 .notes-list-item:hover { background: rgba(var(--overlay-rgb), 0.04); }
 .notes-list-item--active { background: rgba(var(--overlay-rgb), 0.07); }
 

@@ -10,7 +10,7 @@ import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
 import { IconTag } from "../components/IconTag";
 import { ConfirmDelete } from "../components/ConfirmDelete";
-import { GearIcon, NoteIcon, PlusIcon } from "../components/Icons";
+import { GearIcon, PlusIcon } from "../components/Icons";
 import { keyLabel } from "../lib/keybindings";
 import { SettingsTab } from "./Setup";
 
@@ -162,15 +162,11 @@ export function Main({
         <div className="topbar-center">
           <ViewSwitch
             active="tasks"
-            toggleKey={bindings["calendar"]}
-            onSelect={(v) => { if (v === "calendar") onCalendar(); }}
+            onSelect={(v) => (v === "calendar" ? onCalendar() : onNotes())}
           />
         </div>
         <div className="topbar-right">
           {loading && <span className="syncing" aria-label="syncing" />}
-          <IconTag label="notes" keyHint={bindings["notes-view"]}>
-            <button className="topbar-icon-btn" aria-label="notes" onClick={() => onNotes()}><NoteIcon /></button>
-          </IconTag>
           <IconTag label="settings" keyHint={bindings["settings"]}>
             <button className="topbar-icon-btn" aria-label="settings" onClick={() => onSettings()}><GearIcon /></button>
           </IconTag>
