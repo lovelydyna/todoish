@@ -22,19 +22,7 @@ A small macOS window that shows tasks from your Notion databases, sorted by when
 
 1. In Notion's developer portal, create a connection and copy its **internal connection token**.
 2. Share your database with it (database `···` → Connections).
-3. In todoish, pick the database and map its Status, Date, Deadline and Description properties.
-
-## Keys
-
-| Key | Action |
-|---|---|
-| `↑` `↓` | move |
-| `space` | change status |
-| `n` / `e` / `d` / `u` | new / edit / delete / undo |
-| `c` | tasks ⇄ calendar |
-| `m` | month view |
-| `w` | notes |
-| `,` / `?` | settings / all shortcuts |
+3. Paste the token and press **Check**. Your shared databases show up and their properties are matched for you; change any match in Settings → Notion.
 
 ## Build from source
 

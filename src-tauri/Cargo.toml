@@ -39,3 +39,12 @@ split-debuginfo = "unpacked"
 opt-level = 3
 debug = false
 
+# Smaller download: optimise for size, link-time optimise across crates,
+# and drop debug symbols. Panics still unwind, so a failed background task
+# doesn't take the whole app down.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
