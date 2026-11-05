@@ -9,6 +9,43 @@ import {
 } from "../lib/keybindings";
 import { eventToAccelerator, acceleratorLabel } from "../lib/accelerator";
 
+/** Keys that can't be rebound, listed so the shortcuts page is complete. */
+const FIXED: { title: string; rows: [string, string][] }[] = [
+  {
+    title: "always",
+    rows: [
+      ["move down / up (as well as the arrows)", "j / k"],
+      ["previous / next week or month (calendar)", "← / →"],
+      ["close a dialog or go back", "esc"],
+      ["hide window", "⌘W / ⌘H"],
+      ["quit", "⌘Q"],
+      ["refresh", "⌘R"],
+    ],
+  },
+  {
+    title: "notes terminal",
+    rows: [
+      ["list / change folder", "ls · cd"],
+      ["make a folder (with parents)", "mkdir -p"],
+      ["open or create a note", "vim name"],
+      ["complete a name", "tab"],
+      ["back to tasks", "esc"],
+    ],
+  },
+  {
+    title: "notes editor",
+    rows: [
+      ["start / stop typing", "i · esc"],
+      ["save · save and close", ":w · :wq"],
+      ["close · close without saving", ":q · :q!"],
+      ["go to line 12", ":12"],
+      ["select all, then delete", "⌘A · d"],
+      ["delete / copy / paste a line", "dd · yy · p"],
+      ["undo", "u"],
+    ],
+  },
+];
+
 interface KeybindingsEditorProps {
   /** Tauri accelerator, e.g. "CmdOrControl+Shift+T". Empty disables it. */
   globalShortcut: string;
@@ -147,12 +184,17 @@ export function KeybindingsEditor({
         </div>
       </div>
 
-      <div className="kb-section">
-        <h2 className="kb-section-title">fixed</h2>
-        <div className="kb-row kb-row--static"><span className="kb-label">hide</span><kbd className="kbd kbd--lg">⌘W / ⌘H</kbd></div>
-        <div className="kb-row kb-row--static"><span className="kb-label">quit</span><kbd className="kbd kbd--lg">⌘Q</kbd></div>
-        <div className="kb-row kb-row--static"><span className="kb-label">refresh</span><kbd className="kbd kbd--lg">⌘R</kbd></div>
-      </div>
+      {FIXED.map(({ title, rows }) => (
+        <div key={title} className="kb-section">
+          <h2 className="kb-section-title">{title}</h2>
+          {rows.map(([label, keys]) => (
+            <div key={label} className="kb-row kb-row--static">
+              <span className="kb-label">{label}</span>
+              <kbd className="kbd kbd--lg">{keys}</kbd>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

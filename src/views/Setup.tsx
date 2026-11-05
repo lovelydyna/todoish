@@ -35,6 +35,7 @@ interface SetupProps {
   initialTone?: string;
   initialPosition?: string;
   initialGlobalShortcut?: string;
+  initialAlwaysOnTop?: boolean;
   initialAppearance?: Partial<Appearance>;
   /** Which tab to open on. Lets `?` jump straight to the keybindings. */
   initialTab?: SettingsTab;
@@ -118,6 +119,7 @@ export function Setup({
   initialTone = "bell",
   initialPosition = "",
   initialGlobalShortcut = "CmdOrControl+Shift+T",
+  initialAlwaysOnTop = false,
   initialAppearance = {},
   initialTab = "general",
   items = [],
@@ -132,6 +134,7 @@ export function Setup({
   const [enabledDataSources, setEnabledDataSources] = useState<string[]>(initialEnabledDataSources);
   const [schemaOverrides, setSchemaOverrides] = useState<Record<string, SchemaOverride>>(initialSchemaOverrides);
   const [autostart, setAutostart] = useState(false);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(initialAlwaysOnTop);
   const [appearance, setAppearance] = useState(() => normalizeAppearance(initialAppearance));
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +181,8 @@ export function Setup({
         theme: appearance.theme,
         colorMode: appearance.mode,
         windowOpacity: appearance.opacity,
+        // Omitted on first run, where the switch isn't shown.
+        alwaysOnTop: isSettings ? alwaysOnTop : undefined,
       });
       if (isSettings) {
         setSaved(true);
@@ -459,6 +464,22 @@ export function Setup({
             </div>
 
             <div className="setting setting--row">
+              <FieldLabel info="Keeps todoish above other windows, including a full-screen browser, so you can take notes during a meeting. Applies when you save.">
+                Stay on top
+              </FieldLabel>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={alwaysOnTop}
+                aria-label="stay on top"
+                className={`switch${alwaysOnTop ? " switch--on" : ""}`}
+                onClick={() => setAlwaysOnTop((v) => !v)}
+              >
+                <span className="switch-knob" />
+              </button>
+            </div>
+
+            <div className="setting setting--row">
               <FieldLabel info="Starts todoish when you log in to your Mac. This one applies right away.">
                 Open at login
               </FieldLabel>
@@ -474,21 +495,21 @@ export function Setup({
               </button>
             </div>
 
-            {autostart && (
-              <div className="setting setting--row">
-                <FieldLabel>Window position at login</FieldLabel>
-                <select
-                  className="select"
-                  aria-label="window position at login"
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value)}
-                >
-                  {POSITIONS.map((p) => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="setting setting--row">
+              <FieldLabel info="Where the window appears each time todoish starts.">
+                Opens at
+              </FieldLabel>
+              <select
+                className="select"
+                aria-label="window position when todoish starts"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+              >
+                {POSITIONS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
           </>
         )}
 

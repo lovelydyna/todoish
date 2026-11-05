@@ -38,6 +38,7 @@ let config: Config = {
   theme: "midnight",
   color_mode: "dark",
   window_opacity: 0.82,
+  always_on_top: false,
 };
 
 /** Hours ago, as an ISO instant — for seeding plausible history timestamps. */
@@ -212,6 +213,7 @@ const handlers: Record<string, (args: Args) => unknown> = {
       theme: args.theme ?? config.theme,
       color_mode: args.colorMode ?? config.color_mode,
       window_opacity: args.windowOpacity ?? config.window_opacity,
+      always_on_top: args.alwaysOnTop ?? config.always_on_top,
     };
     return null;
   },

@@ -120,6 +120,7 @@ export default function App() {
           initialTone={currentConfig?.completion_tone ?? "bell"}
           initialPosition={currentConfig?.startup_position ?? ""}
           initialGlobalShortcut={currentConfig?.global_shortcut ?? "CmdOrControl+Shift+T"}
+          initialAlwaysOnTop={currentConfig?.always_on_top ?? false}
           initialAppearance={appearanceOf(currentConfig)}
           initialTab={settingsTab}
           items={items}

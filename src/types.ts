@@ -55,6 +55,8 @@ export interface Config {
   theme: string;
   color_mode: string;
   window_opacity: number;
+  /** Keep the window above other apps. */
+  always_on_top: boolean;
 }
 
 export type TaskGroup = "NOW" | "THIS WEEK" | "NEXT WEEK" | "LATER" | "DONE";
