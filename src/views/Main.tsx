@@ -194,9 +194,7 @@ export function Main({
             onSelect={selectRow}
             onCycle={(t) => onCycle(t.id)}
             aside={
-              group === "NOW" ? (
-                new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
-              ) : group === "DONE" ? (
+              group === "DONE" ? (
                 <button type="button" className="group-action" title={`[${keyLabel(bindings["toggle-done"])}]`}
                   onClick={() => setShowAllDone((v) => !v)}>
                   {showAllDone ? "Show recent" : "Show all"}

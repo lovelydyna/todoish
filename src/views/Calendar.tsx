@@ -4,7 +4,7 @@ import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
 import { groupEvents, upcomingByDay, daySections } from "../lib/groupEvents";
-import { addDays, addMonths, addWeeks, dayHeading } from "../lib/calendarGrid";
+import { addMonths, addWeeks, dayHeading } from "../lib/calendarGrid";
 import { EventGroup } from "../components/EventGroup";
 import { ItemEdit } from "../components/ItemEdit";
 import { WeekStrip } from "../components/WeekStrip";
@@ -16,9 +16,6 @@ import { ConfirmDelete } from "../components/ConfirmDelete";
 import { CloseIcon, GearIcon, PlusIcon } from "../components/Icons";
 import { keyLabel } from "../lib/keybindings";
 import { SettingsTab } from "./Setup";
-
-const shortDate = (d: Date) =>
-  d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
 /** How far forward the list runs once you pick a day on a grid. */
 const DAYS_FROM_SELECTED = 14;
@@ -238,10 +235,8 @@ export function Calendar({
       <div className="task-list">
         {!selectedDay && (
           <>
-            <EventGroup label="Today" aside={shortDate(new Date())} variant="today"
-              events={groups.TODAY} {...rowProps} />
-            <EventGroup label="Tomorrow" aside={shortDate(addDays(new Date(), 1))} variant="tomorrow"
-              events={groups.TOMORROW} {...rowProps} />
+            <EventGroup label="Today" variant="today" events={groups.TODAY} {...rowProps} />
+            <EventGroup label="Tomorrow" variant="tomorrow" events={groups.TOMORROW} {...rowProps} />
           </>
         )}
         {sections.map(({ date, items: dayEvents }) => (

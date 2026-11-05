@@ -783,7 +783,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
   line-height: 1;
   color: var(--text);
@@ -791,7 +791,7 @@ select:focus-visible {
 .group-title--button { padding: 0; }
 
 .group-count {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
@@ -806,7 +806,7 @@ select:focus-visible {
   margin-right: -4px;
   padding: 2px 3px 2px 8px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 .group-action:hover { background: var(--hover); color: var(--text); }
@@ -835,7 +835,7 @@ select:focus-visible {
 .event-row::after {
   content: "";
   position: absolute;
-  left: 34px;
+  left: 38px;
   right: 8px;
   bottom: 0;
   height: 1px;
@@ -859,15 +859,15 @@ select:focus-visible {
 .event-row-main {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 34px;
+  gap: 12px;
+  min-height: 42px;
 }
 
 .task-title,
 .event-name {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -881,14 +881,12 @@ select:focus-visible {
 .due {
   display: inline-block;
   flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 13px;
+  color: var(--text-faint);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .due::first-letter { text-transform: uppercase; }
-.due--today    { color: var(--accent-now); }
-.due--tomorrow { color: var(--accent-next); }
 .due--overdue  { color: var(--accent-red); }
 
 .task-row--done .task-title {
@@ -901,9 +899,9 @@ select:focus-visible {
    whichever view you opened it from. */
 .row-description {
   margin-top: -4px;
-  padding: 0 8px 9px 26px;
+  padding: 0 8px 10px 30px;
   color: var(--text-dim);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   user-select: text;
@@ -912,8 +910,8 @@ select:focus-visible {
 
 .event-time {
   flex-shrink: 0;
-  width: 88px;
-  font-size: 12px;
+  width: 100px;
+  font-size: 13px;
   color: var(--text-dim);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -926,8 +924,8 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   padding: 0;
   border-radius: 50%;
@@ -939,7 +937,7 @@ select:focus-visible {
 }
 .statusbox:hover { background: color-mix(in srgb, var(--ring, var(--text-faint)) 26%, transparent); }
 .statusbox:active { transform: scale(0.9); }
-.statusbox svg { width: 10px; height: 10px; display: block; }
+.statusbox svg { width: 11px; height: 11px; display: block; }
 
 /* Started: the icon's own half-filled ring replaces the border. */
 .statusbox--progress {
@@ -947,7 +945,7 @@ select:focus-visible {
   background: none;
   color: var(--ring, var(--accent-blue));
 }
-.statusbox--progress svg { width: 18px; height: 18px; }
+.statusbox--progress svg { width: 20px; height: 20px; }
 
 .statusbox--done {
   background: var(--ring, var(--accent-next));

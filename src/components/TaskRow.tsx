@@ -12,18 +12,10 @@ interface TaskRowProps {
   onCycle: () => void;
 }
 
-/** Colour key for the due label: overdue, today and tomorrow each get one,
- *  anything further out stays neutral so the near dates stand out. */
-export function dueTone(hint: string, overdue: boolean): string {
-  if (overdue) return "due--overdue";
-  if (hint === "today") return "due--today";
-  if (hint === "tomorrow") return "due--tomorrow";
-  return "";
-}
-
 export function TaskRow({ item, selected, expanded, onClick, onCycle }: TaskRowProps) {
   const due = actionDate(item);
-  const hint = timeHint(due);
+  // "today" only repeats the Now heading above it, so it's left off.
+  const hint = timeHint(due) === "today" ? "" : timeHint(due);
   const isDone = item.status === "Done";
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -42,7 +34,7 @@ export function TaskRow({ item, selected, expanded, onClick, onCycle }: TaskRowP
         <StatusBox status={item.status} onCycle={onCycle} />
         <span className="task-title">{item.name}</span>
         {hint && !isDone && (
-          <span className={`due ${dueTone(hint, isOverdue(due))}`}>{hint}</span>
+          <span className={`due${isOverdue(due) ? " due--overdue" : ""}`}>{hint}</span>
         )}
       </div>
       {expanded && item.description && (
