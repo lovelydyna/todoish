@@ -221,13 +221,11 @@ const handlers: Record<string, (args: Args) => unknown> = {
   trigger_sync: () => items,
   get_items: () => items,
 
-  cycle_status: ({ itemId }) => {
+  set_status: ({ itemId, status }) => {
     const found = items.find((i) => i.id === itemId);
-    if (!found) return "Todo";
-    found.status =
-      found.status === "Todo" ? "In Progress" : found.status === "In Progress" ? "Done" : "Todo";
+    if (!found) throw "That item is no longer in the list — try refreshing.";
+    found.status = status;
     found.last_edited_time = new Date().toISOString();
-    return found.status;
   },
   create_item: (args) => {
     const created = item(`i${Date.now()}`, args.name, {

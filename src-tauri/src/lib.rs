@@ -90,7 +90,7 @@ pub fn run() {
             commands::describe_schemas,
             commands::get_items,
             commands::trigger_sync,
-            commands::cycle_status,
+            commands::set_status,
             commands::create_item,
             commands::update_item_cmd,
             commands::delete_item,

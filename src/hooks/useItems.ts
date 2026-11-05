@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Item, Config } from "../types";
 import { playComplete } from "../lib/sounds";
 import { checkDeadlineAlerts } from "../lib/deadlineAlerts";
+import { nextStatus, withPending } from "../lib/statusSync";
 
 /** The editable fields of an item — everything except id and status. */
 export interface ItemFields {
@@ -24,6 +25,15 @@ export function useItems() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const toneRef = useRef("bell");
+  // Statuses set here but not yet confirmed by a sync, and the queue that
+  // sends them to Notion one at a time, in click order.
+  const pendingRef = useRef(new Map<string, string>());
+  const writesRef = useRef(Promise.resolve());
+
+  const receive = useCallback(
+    (fresh: Item[]) => setItems(withPending(fresh, pendingRef.current)),
+    []
+  );
 
   useEffect(() => {
     invoke<Config>("get_config")
@@ -35,25 +45,25 @@ export function useItems() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await invoke<Item[]>("trigger_sync"));
+      receive(await invoke<Item[]>("trigger_sync"));
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [receive]);
 
   useEffect(() => {
     loadItems();
 
-    const unlistenItems = listen<Item[]>("items-updated", (e) => setItems(e.payload));
+    const unlistenItems = listen<Item[]>("items-updated", (e) => receive(e.payload));
     const unlistenError = listen<string>("sync-error", (e) => setError(e.payload));
 
     return () => {
       unlistenItems.then((f) => f());
       unlistenError.then((f) => f());
     };
-  }, [loadItems]);
+  }, [loadItems, receive]);
 
   // Keep a ref current so cycleStatus always sees the latest items
   useEffect(() => { itemsRef.current = items; }, [items]);
@@ -63,30 +73,40 @@ export function useItems() {
   // day, so this is a no-op lookup on repeat calls, not a repeat notification.
   useEffect(() => { checkDeadlineAlerts(items); }, [items]);
 
-  // Cycles Todo → In Progress → Done → Todo, keeping the item visible
-  const cycleStatus = useCallback(async (itemId: string) => {
-    const current = itemsRef.current.find((i) => i.id === itemId)?.status;
-    if (current === "In Progress") playComplete(toneRef.current);
+  // Cycles Todo → In Progress → Done → Todo, keeping the item visible. The
+  // status shown is the one sent, so fast clicks can't leave Notion behind.
+  const cycleStatus = useCallback((itemId: string) => {
+    const item = itemsRef.current.find((i) => i.id === itemId);
+    if (!item) return;
+    const next = nextStatus(pendingRef.current.get(itemId) ?? item.status);
+    if (next === "Done") playComplete(toneRef.current);
 
-    // Optimistic update before Notion responds
+    pendingRef.current.set(itemId, next);
     setItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== itemId) return i;
-        const next =
-          i.status === "Todo" ? "In Progress" : i.status === "In Progress" ? "Done" : "Todo";
-        return {
+      prev.map((i) =>
+        i.id !== itemId ? i : {
           ...i,
           status: next,
           last_edited_time: next === "Done" ? new Date().toISOString() : i.last_edited_time,
-        };
-      })
+        }
+      )
     );
-    try {
-      await invoke("cycle_status", { itemId });
-    } catch (e) {
-      setError(String(e));
-      await loadItems(); // revert
-    }
+
+    const settle = () => {
+      if (pendingRef.current.get(itemId) === next) pendingRef.current.delete(itemId);
+    };
+    writesRef.current = writesRef.current.then(async () => {
+      try {
+        await invoke("set_status", { itemId, status: next });
+        // shortcut: a fixed 5s guard against a query that still returns the
+        // pre-write value; tie it to the next sync if 5s ever proves too short.
+        setTimeout(settle, 5000);
+      } catch (e) {
+        settle();
+        setError(String(e));
+        await loadItems(); // revert
+      }
+    });
   }, [loadItems]);
 
   const addItem = useCallback(async (fields: ItemFields) => {

@@ -108,16 +108,14 @@ pub async fn trigger_sync(cache: State<'_, ItemCache>) -> Result<Vec<Item>, Stri
     Ok(items)
 }
 
-/// Cycles an item forward: Todo → In Progress → Done → Todo.
-/// Returns the new status so the frontend can update optimistically.
+/// Sets an item's status to the one the UI shows. The UI picks the next stage
+/// itself, so rapid clicks can't drift from what Notion ends up holding.
 #[tauri::command]
-pub async fn cycle_status(item_id: String, cache: State<'_, ItemCache>) -> Result<String, String> {
+pub async fn set_status(item_id: String, status: String, cache: State<'_, ItemCache>) -> Result<(), String> {
     let item = cached(&cache, &item_id)?;
-
-    let next = match item.status.as_str() {
-        "Todo" => "In Progress",
-        "In Progress" => "Done",
-        _ => "Todo",
+    let next = match status.as_str() {
+        "Todo" | "In Progress" | "Done" => status.as_str(),
+        other => return Err(format!("Unknown status \"{other}\".")),
     };
 
     let config = load_config().ok_or("No config")?;
@@ -141,7 +139,7 @@ pub async fn cycle_status(item_id: String, cache: State<'_, ItemCache>) -> Resul
         item.last_edited_time = Some(now);
     }
 
-    Ok(next.to_string())
+    Ok(())
 }
 
 #[tauri::command]
