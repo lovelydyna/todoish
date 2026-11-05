@@ -1,6 +1,6 @@
 [package]
 name = "todoish"
-version = "1.2.0"
+version = "1.2.1"
 description = "ADHD-friendly Notion task manager"
 authors = []
 edition = "2021"
