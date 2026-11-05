@@ -1,16 +1,11 @@
 import { Item } from "../types";
 import { eventAnchor } from "./groupEvents";
+import { startOfDay } from "./groupTasks";
 
 /** Local YYYY-MM-DD, the key both grids and the item index agree on. */
 export function dayKey(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-export function startOfDay(d: Date): Date {
-  const copy = new Date(d);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
 }
 
 export function addDays(d: Date, n: number): Date {

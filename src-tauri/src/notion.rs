@@ -1,4 +1,8 @@
-//! The Notion client. One Notion **data source** backs the whole app:
+//! The Notion client. Every database shared with the integration backs the
+//! app — there's no id to configure. [`resolve_sources`] finds them via
+//! `/v1/search`, the same visibility a manually-pasted id was always subject
+//! to (a database only shows up once you add the integration under its own
+//! "··· → Connections" menu in Notion).
 //!
 //! | Property      | Notion type             | Meaning                       |
 //! |---------------|-------------------------|-------------------------------|
@@ -9,13 +13,12 @@
 //! | `Description` | rich text               | free-form notes               |
 //!
 //! The task view groups by deadline, the calendar view by time. Both read the
-//! same rows.
+//! same rows, merged across every shared database.
 //!
-//! Notion's 2025-09-03 API split "database" (a container) from "data source"
-//! (the table inside it), and queries now address a data source. The id in a
-//! database URL is still a *database* id, so [`resolve_source`] accepts
-//! either and looks up the data source when it needs to — the user should not
-//! have to know which kind of id they pasted.
+//! Notion's 2025-09-03 API split "database" (a container, sharing and all)
+//! from "data source" (the actual table — queried, written to, and searched
+//! for directly; `/v1/search` has no "database" filter value at all, only
+//! `"page"` and `"data_source"`).
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -30,7 +33,16 @@ const NOTION_VERSION: &str = "2025-09-03";
 #[derive(Clone, Debug)]
 pub struct Source {
     pub data_source_id: String,
+    /// The database's own title, for labeling multiple shared databases and
+    /// for picking a deterministic default (alphabetically first) when more
+    /// than one is shared and nothing else says which to use.
+    pub title: String,
     pub schema: Schema,
+    /// The raw `properties` object, kept alongside the derived `Schema` so a
+    /// manual override (see `SchemaOverride`) can be validated against a
+    /// property's real type, and so settings can list every property to
+    /// choose from.
+    pub properties: Value,
 }
 
 /// Which property in *this* data source plays each role.
@@ -106,9 +118,23 @@ impl Schema {
     }
 }
 
-/// What the app matched in a user's database, for the settings readout.
+/// One property of a data source, for building the "pick a property"
+/// dropdowns settings shows next to each role once a manual override is
+/// wanted — `kind` is Notion's own type string ("status", "date", "select",
+/// "rich_text", …), used to only offer properties a role can actually use.
+#[derive(Debug, Clone, Serialize)]
+pub struct PropertySummary {
+    pub name: String,
+    pub kind: String,
+}
+
+/// What the app matched in one shared database, for the settings readout.
 #[derive(Debug, Clone, Serialize)]
 pub struct SchemaReport {
+    pub data_source_id: String,
+    /// The database's own title, so a settings list of several reads as
+    /// "School: ...", "Work: ..." rather than an unlabeled stack.
+    pub database_title: String,
     pub title: String,
     pub status: Option<String>,
     /// The option written for each stage, e.g. ["Not started", "In progress", "Done"].
@@ -117,41 +143,70 @@ pub struct SchemaReport {
     pub deadline: Option<String>,
     pub description: Option<String>,
     pub missing: Vec<String>,
+    pub properties: Vec<PropertySummary>,
 }
 
-/// Reads the database and reports which property fills each role. Bypasses the
-/// cache so it reflects renames made since the app started.
-pub async fn describe_schema(api_key: &str, database_id: &str) -> Result<SchemaReport, String> {
+impl From<&Source> for SchemaReport {
+    fn from(source: &Source) -> Self {
+        let schema = &source.schema;
+        let status_options = schema
+            .status
+            .as_ref()
+            .map(|st| {
+                ["Todo", "In Progress", "Done"]
+                    .iter()
+                    .map(|stage| st.option_for(stage).unwrap_or("—").to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let properties = source
+            .properties
+            .as_object()
+            .map(|props| {
+                props
+                    .iter()
+                    .map(|(name, v)| PropertySummary {
+                        name: name.clone(),
+                        kind: v["type"].as_str().unwrap_or("").to_string(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        SchemaReport {
+            data_source_id: source.data_source_id.clone(),
+            database_title: source.title.clone(),
+            missing: schema.missing(),
+            title: schema.title.clone(),
+            status: schema.status.as_ref().map(|st| st.name.clone()),
+            status_options,
+            time: schema.time.clone(),
+            deadline: schema.deadline.clone(),
+            description: schema.description.clone(),
+            properties,
+        }
+    }
+}
+
+/// Reads every database shared with the integration and reports which
+/// property fills each role in each one. Bypasses the cache so it reflects
+/// renames, or newly-shared databases, made since the app started.
+pub async fn describe_schemas(
+    api_key: &str,
+    overrides: &HashMap<String, SchemaOverride>,
+) -> Result<Vec<SchemaReport>, String> {
     forget_sources();
-    let source = resolve_source(api_key, database_id).await?;
-    let schema = source.schema;
-    let status_options = schema
-        .status
-        .as_ref()
-        .map(|st| {
-            ["Todo", "In Progress", "Done"]
-                .iter()
-                .map(|stage| st.option_for(stage).unwrap_or("—").to_string())
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(SchemaReport {
-        missing: schema.missing(),
-        title: schema.title.clone(),
-        status: schema.status.as_ref().map(|st| st.name.clone()),
-        status_options,
-        time: schema.time,
-        deadline: schema.deadline,
-        description: schema.description,
-    })
+    let sources = resolve_sources(api_key, overrides).await?;
+    Ok(sources.iter().map(SchemaReport::from).collect())
 }
 
-/// Resolved sources, keyed by whatever id the user configured. Resolution
-/// costs two round trips, and the sync loop runs every 60s.
-static SOURCES: OnceLock<Mutex<HashMap<String, Source>>> = OnceLock::new();
+/// Resolved sources, keyed by the connection token — a token only ever
+/// points at one Notion workspace, so this also invalidates itself if the
+/// user switches tokens without an explicit `forget_sources()`. Resolution
+/// costs a search plus one round trip per database, and the sync loop runs
+/// every 60s.
+static SOURCES: OnceLock<Mutex<HashMap<String, Vec<Source>>>> = OnceLock::new();
 
-fn source_cache() -> &'static Mutex<HashMap<String, Source>> {
+fn source_cache() -> &'static Mutex<HashMap<String, Vec<Source>>> {
     SOURCES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -237,11 +292,26 @@ fn detect_schema(properties: &Value) -> Schema {
         })
     };
 
+    // If nothing matched by name but exactly one property of that type is left
+    // unclaimed, use it — a database rarely has two date columns it didn't
+    // bother to name conventionally, so the sole candidate is almost always
+    // the intended one.
+    let sole_unclaimed = |wanted: &str, taken: &[&str]| -> Option<String> {
+        let mut candidates = entries
+            .iter()
+            .filter(|(k, v)| type_of(v) == wanted && !taken.iter().any(|t| k.eq_ignore_ascii_case(t)));
+        match (candidates.next(), candidates.next()) {
+            (Some((k, _)), None) => Some((*k).clone()),
+            _ => None,
+        }
+    };
+
     // Deadline resolves first so a database with both "Date" and "Deadline"
     // can't have the deadline column swallowed by the scheduled-time role.
     let deadline = named(&["Deadline", "Due", "Due Date", "Due date"], &["date"], &[]);
     let claimed: Vec<&str> = deadline.iter().map(|s| s.as_str()).collect();
-    let time = named(&["Time", "Date", "When", "Scheduled"], &["date"], &claimed);
+    let time = named(&["Time", "Date", "When", "Scheduled"], &["date"], &claimed)
+        .or_else(|| sole_unclaimed("date", &claimed));
 
     let status = by_type("status")
         .map(|name| {
@@ -264,7 +334,8 @@ fn detect_schema(properties: &Value) -> Schema {
         status,
         time,
         deadline,
-        description: named(&["Description", "Notes", "Details"], &["rich_text"], &[]),
+        description: named(&["Description", "Notes", "Details"], &["rich_text"], &[])
+            .or_else(|| sole_unclaimed("rich_text", &[])),
     }
 }
 
@@ -276,39 +347,135 @@ fn authed(request: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBu
         .header("Content-Type", "application/json")
 }
 
-/// Turns a configured id — database *or* data source — into a data source id.
-///
-/// Tries the database endpoint first, since the id people copy out of a Notion
-/// URL is a database id. A database with several data sources resolves to the
-/// first one; picking between them would need UI this app does not have.
-pub async fn resolve_source(api_key: &str, configured_id: &str) -> Result<Source, String> {
-    let configured_id = configured_id.trim();
-    if configured_id.is_empty() {
-        return Err("No database configured".into());
+/// Every data source shared with the integration, schema and all — the
+/// whole point being that nobody has to go find and paste an id. Per
+/// Notion's own docs, `/v1/search` filtered to `data_source` returns exactly
+/// what's been shared with the connection via "··· → Connections" on the
+/// database that owns it — the same visibility rule a manually-pasted id was
+/// always subject to anyway. (Searching by `"database"` is not — and was
+/// never, under this API version — a valid filter value; only `"page"` and
+/// `"data_source"` are. Using it is a 400, not an empty result.)
+pub async fn resolve_sources(
+    api_key: &str,
+    overrides: &HashMap<String, SchemaOverride>,
+) -> Result<Vec<Source>, String> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("No Notion connection token configured".into());
     }
 
-    if let Some(hit) = source_cache()
-        .lock()
-        .expect("source cache poisoned")
-        .get(configured_id)
-    {
+    if let Some(hit) = source_cache().lock().expect("source cache poisoned").get(api_key) {
         return Ok(hit.clone());
     }
 
-    let data_source_id = lookup_data_source(api_key, configured_id).await?;
-    let schema = fetch_schema(api_key, &data_source_id).await?;
-    let source = Source { data_source_id, schema };
+    let found = search_data_sources(api_key).await?;
+    if found.is_empty() {
+        return Err(
+            "No databases are shared with this integration yet. Open a database in Notion, \
+             click \"···\" in the top right, choose Connections, and add your integration."
+                .into(),
+        );
+    }
+
+    let mut sources = Vec::new();
+    for ds in found {
+        let properties = fetch_properties(api_key, &ds.id).await?;
+        let mut schema = detect_schema(&properties);
+        if let Some(over) = overrides.get(&ds.id) {
+            schema = apply_override(schema, &properties, over);
+        }
+        sources.push(Source { data_source_id: ds.id, title: ds.title, schema, properties });
+    }
+    // Deterministic order — alphabetical by title — so "the first one" (where
+    // a freshly created item lands, absent any other choice) doesn't depend
+    // on whatever order Notion's search happened to return.
+    sources.sort_by(|a, b| a.title.cmp(&b.title));
 
     source_cache()
         .lock()
         .expect("source cache poisoned")
-        .insert(configured_id.to_string(), source.clone());
-    Ok(source)
+        .insert(api_key.to_string(), sources.clone());
+    Ok(sources)
 }
 
-/// Reads the data source's properties so the app can match its own field
-/// names to whatever this particular database calls them.
-async fn fetch_schema(api_key: &str, data_source_id: &str) -> Result<Schema, String> {
+struct FoundDataSource {
+    id: String,
+    title: String,
+}
+
+/// Pages through `/v1/search` filtered to `data_source` objects.
+async fn search_data_sources(api_key: &str) -> Result<Vec<FoundDataSource>, String> {
+    let client = Client::new();
+    let mut found = Vec::new();
+    let mut cursor: Option<String> = None;
+
+    loop {
+        let mut body = json!({
+            "filter": { "value": "data_source", "property": "object" },
+            "page_size": 100,
+        });
+        if let Some(c) = &cursor {
+            body["start_cursor"] = json!(c);
+        }
+
+        let response = authed(client.post("https://api.notion.com/v1/search"), api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| crate::http::describe_send_error("Notion", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(describe_api_error(status, &text));
+        }
+
+        let data: NotionSearchResponse = response.json().await.map_err(|e| e.to_string())?;
+        found.extend(data.results.into_iter().map(|ds| FoundDataSource {
+            id: ds.id,
+            title: extract_db_title(&ds.title),
+        }));
+
+        match (data.has_more, data.next_cursor) {
+            (true, Some(next)) => cursor = Some(next),
+            _ => break,
+        }
+    }
+
+    Ok(found)
+}
+
+/// A data source's title, straight off its top-level `title` field (not
+/// nested under `properties`, unlike a page's). Notion leaves this empty for
+/// a genuinely untitled one, which would otherwise sort to the top of the
+/// alphabetical default-source ordering and silently become where new items
+/// land — "Untitled" avoids that.
+fn extract_db_title(title: &[Value]) -> String {
+    let joined: String = title.iter().filter_map(|v| v["plain_text"].as_str()).collect();
+    if joined.is_empty() { "Untitled".to_string() } else { joined }
+}
+
+#[derive(Deserialize)]
+struct NotionSearchResponse {
+    results: Vec<NotionSearchResult>,
+    #[serde(default)]
+    has_more: bool,
+    #[serde(default)]
+    next_cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NotionSearchResult {
+    id: String,
+    #[serde(default)]
+    title: Vec<Value>,
+}
+
+/// Reads the data source's raw `properties` object — kept as-is (not just
+/// the derived `Schema`) so a manual override can be validated against the
+/// property's real Notion type, and so settings can offer the full list to
+/// choose from.
+async fn fetch_properties(api_key: &str, data_source_id: &str) -> Result<Value, String> {
     let client = Client::new();
     let response = authed(
         client.get(format!(
@@ -319,70 +486,76 @@ async fn fetch_schema(api_key: &str, data_source_id: &str) -> Result<Schema, Str
     )
     .send()
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("Notion API error reading schema: {}", text));
+        return Err(describe_api_error(status, &text));
     }
 
     let body: Value = response.json().await.map_err(|e| e.to_string())?;
-    Ok(detect_schema(&body["properties"]))
+    Ok(body["properties"].clone())
 }
 
-/// Clears the cache so the next call re-reads ids and schema. Called after the
-/// user saves settings, since they may have pointed at a different database or
-/// renamed a property.
+/// A user's manual property choices for one data source, layered on top of
+/// whatever auto-detection found — `None` for a role means "keep guessing."
+/// Keyed by data source id in `Config::schema_overrides`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SchemaOverride {
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub time: Option<String>,
+    #[serde(default)]
+    pub deadline: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// Layers a manual override onto an auto-detected schema. A chosen property
+/// always wins over an inferred one — but a stale choice (renamed, deleted,
+/// or retyped in Notion since it was picked) is quietly ignored rather than
+/// breaking the whole schema, since that happens entirely outside todoish.
+fn apply_override(mut schema: Schema, properties: &Value, over: &SchemaOverride) -> Schema {
+    let type_of = |name: &str| properties[name]["type"].as_str().unwrap_or("").to_string();
+
+    if let Some(name) = &over.status {
+        match type_of(name).as_str() {
+            "status" => schema.status = Some(detect_status(name.clone(), &properties[name])),
+            // A plain select has no groups — same Todo/In Progress/Done
+            // fallback convention auto-detection already uses for one.
+            "select" => {
+                schema.status = Some(StatusProperty {
+                    name: name.clone(),
+                    todo: Some("Todo".into()),
+                    in_progress: Some("In Progress".into()),
+                    done: Some("Done".into()),
+                })
+            }
+            _ => {}
+        }
+    }
+    if let Some(name) = &over.time {
+        if type_of(name) == "date" { schema.time = Some(name.clone()); }
+    }
+    if let Some(name) = &over.deadline {
+        if type_of(name) == "date" { schema.deadline = Some(name.clone()); }
+    }
+    if let Some(name) = &over.description {
+        if type_of(name) == "rich_text" { schema.description = Some(name.clone()); }
+    }
+    schema
+}
+
+/// Clears the cache so the next call re-reads which databases are shared and
+/// their schema. Called after the user saves settings, since they may have
+/// changed the connection token, shared a new database, or renamed a property.
 pub fn forget_sources() {
     source_cache()
         .lock()
         .expect("source cache poisoned")
         .clear();
-}
-
-async fn lookup_data_source(api_key: &str, id: &str) -> Result<String, String> {
-    let client = Client::new();
-
-    let response = authed(
-        client.get(format!("https://api.notion.com/v1/databases/{}", id)),
-        api_key,
-    )
-    .send()
-    .await
-    .map_err(|e| e.to_string())?;
-
-    if response.status().is_success() {
-        let body: Value = response.json().await.map_err(|e| e.to_string())?;
-        let first = body["data_sources"]
-            .as_array()
-            .and_then(|sources| sources.first())
-            .and_then(|source| source["id"].as_str());
-        return match first {
-            Some(ds) => Ok(ds.to_string()),
-            None => Err(format!(
-                "Notion database {id} has no data sources — open it in Notion and check                  ··· → Manage data sources"
-            )),
-        };
-    }
-
-    // Not a database id. The other possibility is that it already *is* a data
-    // source id, which is what the "Copy data source ID" button hands you.
-    let probe = authed(
-        client.get(format!("https://api.notion.com/v1/data_sources/{}", id)),
-        api_key,
-    )
-    .send()
-    .await
-    .map_err(|e| e.to_string())?;
-
-    if probe.status().is_success() {
-        return Ok(id.to_string());
-    }
-
-    let detail = probe.text().await.unwrap_or_default();
-    Err(format!(
-        "Notion could not find a database or data source with id `{id}`. Check the id, and          that the database is shared with your connection (··· → Connections). {detail}"
-    ))
 }
 
 /// Retry an async Notion API call up to 3 times with exponential backoff (1s, 2s, 4s).
@@ -408,12 +581,21 @@ where
     Err(last_err)
 }
 
-/// Where a row came from, and therefore where writes to it go back to.
-pub const SOURCE_NOTION: &str = "notion";
-pub const SOURCE_GOOGLE: &str = "google";
-
-fn source_notion() -> String {
-    SOURCE_NOTION.to_string()
+/// A 401 here almost always means the connection token itself is the
+/// problem — revoked, retyped wrong, or the integration was removed from
+/// the workspace — so it gets a pointed hint rather than just Notion's raw
+/// error body, which otherwise reads as a one-off glitch rather than
+/// something with an actual fix.
+fn describe_api_error(status: reqwest::StatusCode, text: &str) -> String {
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        format!(
+            "Notion API error: {text} — check the connection token in Settings; it's revoked if \
+             the integration was removed from the workspace or deleted in Notion's own integration \
+             settings."
+        )
+    } else {
+        format!("Notion API error: {text}")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -431,23 +613,12 @@ pub struct Item {
     pub created_time: Option<String>,
     pub last_edited_time: Option<String>,
 
-    /// `"notion"` or `"google"`. Everything that writes routes on this, so a
-    /// row always goes back to the service it came from.
-    #[serde(default = "source_notion")]
-    pub source: String,
-    /// Which Google calendar holds this event. `None` for Notion rows.
+    /// Which Notion database (data source) this row lives in. More than one
+    /// database can be shared with the integration, each with its own
+    /// property names and status options, so a write has to know which one a
+    /// row's schema comes from.
     #[serde(default)]
-    pub calendar_id: Option<String>,
-    /// Which linked Google account this event belongs to. `None` for Notion
-    /// rows. Two accounts can each have a calendar literally called
-    /// "primary" with independently-numbered events, so writes must route on
-    /// the account, not just the calendar id.
-    #[serde(default)]
-    pub account_id: Option<String>,
-    /// Where "open in…" should go. `None` for Notion rows, whose URL is
-    /// derived from the page id.
-    #[serde(default)]
-    pub url: Option<String>,
+    pub data_source_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -505,7 +676,8 @@ fn extract_date_end(props: &Value, key: &str) -> Option<String> {
     props[key]["date"]["end"].as_str().map(|s| s.to_string())
 }
 
-fn page_to_item(page: NotionPage, schema: &Schema) -> Option<Item> {
+fn page_to_item(page: NotionPage, source: &Source) -> Option<Item> {
+    let schema = &source.schema;
     let props = &page.properties;
     let name = extract_title(props, &schema.title);
     if name.is_empty() {
@@ -530,10 +702,7 @@ fn page_to_item(page: NotionPage, schema: &Schema) -> Option<Item> {
         description: by_name(&schema.description, extract_rich_text),
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
-        source: source_notion(),
-        calendar_id: None,
-        account_id: None,
-        url: None,
+        data_source_id: Some(source.data_source_id.clone()),
     })
 }
 
@@ -591,9 +760,31 @@ fn item_properties(
     props
 }
 
-pub async fn fetch_items(api_key: &str, database_id: &str) -> Result<Vec<Item>, String> {
-    let source = resolve_source(api_key, database_id).await?;
-    with_retry(|| fetch_items_once(api_key, &source)).await
+/// Every item across every database the user has chosen to sync — every
+/// shared database, if none have been narrowed down yet.
+pub async fn fetch_items(
+    api_key: &str,
+    overrides: &HashMap<String, SchemaOverride>,
+    enabled: &[String],
+) -> Result<Vec<Item>, String> {
+    let sources = resolve_sources(api_key, overrides).await?;
+    let mut items = Vec::new();
+    for source in selected_sources(&sources, enabled) {
+        items.extend(with_retry(|| fetch_items_once(api_key, source)).await?);
+    }
+    Ok(items)
+}
+
+/// Narrows a resolved source list down to the ones the user picked — every
+/// one of them, if nothing has been picked yet, so a fresh connection with
+/// exactly one shared database (the common case) just works with no setup
+/// step in the way.
+fn selected_sources<'a>(sources: &'a [Source], enabled: &[String]) -> Vec<&'a Source> {
+    if enabled.is_empty() {
+        sources.iter().collect()
+    } else {
+        sources.iter().filter(|s| enabled.iter().any(|id| id == &s.data_source_id)).collect()
+    }
 }
 
 async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, String> {
@@ -618,18 +809,19 @@ async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, S
             .json(&body)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(format!("Notion API error: {}", text));
+            return Err(describe_api_error(status, &text));
         }
 
         let data: NotionQueryResponse = response.json().await.map_err(|e| e.to_string())?;
         items.extend(
             data.results
                 .into_iter()
-                .filter_map(|page| page_to_item(page, &source.schema)),
+                .filter_map(|page| page_to_item(page, source)),
         );
 
         match (data.has_more, data.next_cursor) {
@@ -641,16 +833,36 @@ async fn fetch_items_once(api_key: &str, source: &Source) -> Result<Vec<Item>, S
     Ok(items)
 }
 
+/// The source a stored `data_source_id` refers to, or a clear error if it
+/// was unshared from the integration since the row was fetched.
+fn find_source<'a>(sources: &'a [Source], data_source_id: &str) -> Result<&'a Source, String> {
+    sources
+        .iter()
+        .find(|s| s.data_source_id == data_source_id)
+        .ok_or_else(|| {
+            "This item's database is no longer shared with the integration — try refreshing."
+                .to_string()
+        })
+}
+
+/// Creates a page in whichever database is alphabetically first among the
+/// ones selected to sync, absent any UI for choosing a destination among
+/// several.
 pub async fn create_item(
     api_key: &str,
-    database_id: &str,
+    overrides: &HashMap<String, SchemaOverride>,
+    enabled: &[String],
     name: &str,
     start: Option<&str>,
     end: Option<&str>,
     deadline: Option<&str>,
     description: Option<&str>,
 ) -> Result<Item, String> {
-    let source = resolve_source(api_key, database_id).await?;
+    let sources = resolve_sources(api_key, overrides).await?;
+    let source = selected_sources(&sources, enabled)
+        .into_iter()
+        .next()
+        .ok_or("No databases are shared with this integration.")?;
 
     let mut props = item_properties(&source.schema, name, start, end, deadline, description);
     if let Some(status) = &source.schema.status {
@@ -672,11 +884,12 @@ pub async fn create_item(
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("Notion API error: {}", text));
+        return Err(describe_api_error(status, &text));
     }
 
     let page: NotionPage = response.json().await.map_err(|e| e.to_string())?;
@@ -691,16 +904,15 @@ pub async fn create_item(
         description: description.filter(|s| !s.is_empty()).map(str::to_string),
         created_time: page.created_time,
         last_edited_time: page.last_edited_time,
-        source: source_notion(),
-        calendar_id: None,
-        account_id: None,
-        url: None,
+        data_source_id: Some(source.data_source_id.clone()),
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn update_item(
     api_key: &str,
-    database_id: &str,
+    overrides: &HashMap<String, SchemaOverride>,
+    data_source_id: &str,
     item_id: &str,
     name: &str,
     start: Option<&str>,
@@ -708,19 +920,22 @@ pub async fn update_item(
     deadline: Option<&str>,
     description: Option<&str>,
 ) -> Result<(), String> {
-    let source = resolve_source(api_key, database_id).await?;
+    let sources = resolve_sources(api_key, overrides).await?;
+    let source = find_source(&sources, data_source_id)?;
     let props = item_properties(&source.schema, name, start, end, deadline, description);
     patch_page(api_key, item_id, json!({ "properties": props })).await
 }
 
 pub async fn set_item_status(
     api_key: &str,
-    database_id: &str,
+    overrides: &HashMap<String, SchemaOverride>,
+    data_source_id: &str,
     item_id: &str,
     status: &str,
 ) -> Result<(), String> {
-    let source = resolve_source(api_key, database_id).await?;
-    let Some(property) = source.schema.status else {
+    let sources = resolve_sources(api_key, overrides).await?;
+    let source = find_source(&sources, data_source_id)?;
+    let Some(property) = &source.schema.status else {
         return Err(
             "This database has no Status property, so items can't be marked done. \
              Add one (type: status) in Notion."
@@ -758,11 +973,12 @@ async fn patch_page(api_key: &str, page_id: &str, body: Value) -> Result<(), Str
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::http::describe_send_error("Notion", e))?;
 
     if !response.status().is_success() {
+        let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("Notion API error: {}", text));
+        return Err(describe_api_error(status, &text));
     }
 
     Ok(())
@@ -780,6 +996,15 @@ mod tests {
             time: Some("Time".into()),
             deadline: Some("Deadline".into()),
             description: Some("Description".into()),
+        }
+    }
+
+    fn full_source() -> Source {
+        Source {
+            data_source_id: "ds1".into(),
+            title: "Test".into(),
+            schema: full_schema(),
+            properties: json!({}),
         }
     }
 
@@ -872,6 +1097,44 @@ mod tests {
     }
 
     #[test]
+    fn sole_unnamed_date_property_is_used_as_time() {
+        // Mirrors a real "events" database: one date column, named for what
+        // it holds rather than "Date"/"Time", and no deadline column at all.
+        let props = json!({
+            "Title": { "type": "title" },
+            "Event time": { "type": "date" },
+            "Event type": { "type": "select" },
+            "Course": { "type": "select" },
+            "Notes": { "type": "rich_text" },
+        });
+        let schema = detect_schema(&props);
+        assert_eq!(schema.time.as_deref(), Some("Event time"));
+        assert_eq!(schema.deadline, None);
+    }
+
+    #[test]
+    fn two_unnamed_date_properties_are_left_ambiguous() {
+        let props = json!({
+            "Title": { "type": "title" },
+            "Starts": { "type": "date" },
+            "Ends": { "type": "date" },
+        });
+        let schema = detect_schema(&props);
+        assert_eq!(schema.time, None, "can't guess which of two unnamed date columns is meant");
+    }
+
+    #[test]
+    fn sole_unnamed_rich_text_property_is_used_as_description() {
+        let props = json!({
+            "Title": { "type": "title" },
+            "Due date": { "type": "date" },
+            "Next action": { "type": "rich_text" },
+        });
+        let schema = detect_schema(&props);
+        assert_eq!(schema.description.as_deref(), Some("Next action"));
+    }
+
+    #[test]
     fn a_missing_property_is_never_written() {
         // Writing an unknown key makes Notion reject the entire request.
         let schema = Schema { title: "Name".into(), ..Schema::default() };
@@ -917,7 +1180,7 @@ mod tests {
             last_edited_time: None,
             properties: json!({ "Name": { "title": [] } }),
         };
-        assert!(page_to_item(page, &full_schema()).is_none());
+        assert!(page_to_item(page, &full_source()).is_none());
     }
 
     #[test]
@@ -936,7 +1199,7 @@ mod tests {
                 ]}
             }),
         };
-        let item = page_to_item(page, &full_schema()).expect("item should parse");
+        let item = page_to_item(page, &full_source()).expect("item should parse");
         assert_eq!(item.name, "grant application");
         assert_eq!(item.status, "In Progress");
         assert_eq!(item.start, None);
@@ -952,6 +1215,92 @@ mod tests {
             last_edited_time: None,
             properties: json!({ "Name": { "title": [{ "plain_text": "x" }] } }),
         };
-        assert_eq!(page_to_item(page, &full_schema()).unwrap().status, "Todo");
+        assert_eq!(page_to_item(page, &full_source()).unwrap().status, "Todo");
+    }
+
+    #[test]
+    fn a_multi_run_title_is_joined() {
+        let title = vec![json!({ "plain_text": "School " }), json!({ "plain_text": "Tasks" })];
+        assert_eq!(extract_db_title(&title), "School Tasks");
+    }
+
+    #[test]
+    fn an_untitled_database_falls_back_rather_than_sorting_first() {
+        // An empty title would otherwise be the alphabetically-first string,
+        // silently becoming where a fresh item lands.
+        assert_eq!(extract_db_title(&[]), "Untitled");
+    }
+
+    #[test]
+    fn a_row_carries_the_data_source_it_came_from() {
+        let page = NotionPage {
+            id: "abc".into(),
+            created_time: None,
+            last_edited_time: None,
+            properties: json!({ "Name": { "title": [{ "plain_text": "x" }] } }),
+        };
+        let item = page_to_item(page, &full_source()).unwrap();
+        assert_eq!(item.data_source_id.as_deref(), Some("ds1"));
+    }
+
+    #[test]
+    fn find_source_locates_the_matching_data_source() {
+        let sources = vec![full_source()];
+        assert_eq!(find_source(&sources, "ds1").unwrap().data_source_id, "ds1");
+        assert!(find_source(&sources, "gone").is_err());
+    }
+
+    fn source(id: &str, title: &str) -> Source {
+        Source { data_source_id: id.into(), title: title.into(), schema: Schema::default(), properties: json!({}) }
+    }
+
+    #[test]
+    fn an_empty_selection_means_every_source() {
+        let sources = vec![source("a", "A"), source("b", "B")];
+        let picked = selected_sources(&sources, &[]);
+        assert_eq!(picked.len(), 2);
+    }
+
+    #[test]
+    fn a_non_empty_selection_narrows_to_just_those_ids() {
+        let sources = vec![source("a", "A"), source("b", "B"), source("c", "C")];
+        let picked = selected_sources(&sources, &["b".to_string()]);
+        assert_eq!(picked.iter().map(|s| s.data_source_id.as_str()).collect::<Vec<_>>(), vec!["b"]);
+    }
+
+    #[test]
+    fn a_manual_status_choice_overrides_auto_detection() {
+        let properties = json!({
+            "Stage": default_status_property(),
+        });
+        let over = SchemaOverride { status: Some("Stage".into()), ..Default::default() };
+        let schema = apply_override(Schema::default(), &properties, &over);
+        assert_eq!(schema.status.unwrap().name, "Stage");
+    }
+
+    #[test]
+    fn a_manual_choice_of_the_wrong_type_is_ignored() {
+        // "Notes" is rich_text, not a date — picking it for "deadline" should
+        // not silently produce a broken schema.
+        let properties = json!({ "Notes": { "type": "rich_text" } });
+        let over = SchemaOverride { deadline: Some("Notes".into()), ..Default::default() };
+        let schema = apply_override(Schema::default(), &properties, &over);
+        assert_eq!(schema.deadline, None);
+    }
+
+    #[test]
+    fn a_manual_choice_of_a_stale_property_is_ignored() {
+        let properties = json!({});
+        let over = SchemaOverride { description: Some("Gone".into()), ..Default::default() };
+        let schema = apply_override(Schema::default(), &properties, &over);
+        assert_eq!(schema.description, None);
+    }
+
+    #[test]
+    fn a_manual_date_choice_is_taken_as_is() {
+        let properties = json!({ "Ship date": { "type": "date" } });
+        let over = SchemaOverride { time: Some("Ship date".into()), ..Default::default() };
+        let schema = apply_override(Schema::default(), &properties, &over);
+        assert_eq!(schema.time.as_deref(), Some("Ship date"));
     }
 }

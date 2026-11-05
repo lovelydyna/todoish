@@ -12,10 +12,7 @@ const base: Item = {
   description: null,
   created_time: null,
   last_edited_time: null,
-  source: "notion",
-  calendar_id: null,
-  account_id: null,
-  url: null,
+  data_source_id: null,
 };
 
 const now = new Date("2026-04-20T12:00:00");
@@ -113,7 +110,7 @@ describe("groupTasks", () => {
     expect(g.NOW.map((i) => i.id)).toEqual(["a"]);
   });
 
-  it("drops a Notion task once its deadline has passed", () => {
+  it("drops a task once its deadline has passed", () => {
     const g = groupTasks([{ ...base, id: "a", deadline: "2026-04-01" }]);
     expect(flattenGroups(g).map((i) => i.id)).toEqual([]);
   });
@@ -123,13 +120,6 @@ describe("groupTasks", () => {
       { ...base, id: "a", deadline: "2026-04-01", status: "Done", last_edited_time: "2026-04-20T11:00:00" },
     ]);
     expect(g.DONE.map((i) => i.id)).toEqual(["a"]);
-  });
-
-  it("keeps a past-deadline Google Calendar event visible — only Notion tasks drop off", () => {
-    const g = groupTasks([
-      { ...base, id: "a", deadline: "2026-04-01", source: "google", calendar_id: "primary", account_id: "acct1" },
-    ]);
-    expect(g.NOW.map((i) => i.id)).toEqual(["a"]);
   });
 
   it("hides done items older than 24h unless the archive is on", () => {

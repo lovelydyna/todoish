@@ -5,7 +5,7 @@ import { Setup, SettingsTab } from "./views/Setup";
 import { Main } from "./views/Main";
 import { Calendar } from "./views/Calendar";
 import { Notes } from "./views/Notes";
-import { Config, CalendarAccount } from "./types";
+import { Config } from "./types";
 import { useItems } from "./hooks/useItems";
 import { applyAppearance, watchSystemScheme } from "./lib/theme";
 import { initAudio } from "./lib/sounds";
@@ -24,10 +24,6 @@ function appearanceOf(config: Config | null) {
 export default function App() {
   const [view, setView] = useState<View>("loading");
   const [currentConfig, setCurrentConfig] = useState<Config | null>(null);
-  // Every linked Google account. Whether the add form offers a destination —
-  // and which ones it lists — comes straight from this; with none linked
-  // there is no choice to make.
-  const [calendarAccounts, setCalendarAccounts] = useState<CalendarAccount[]>([]);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   // Whether the notes view, once it mounts, should start a fresh note
   // rather than reopening whichever one was last open.
@@ -35,14 +31,9 @@ export default function App() {
 
   // One database, one fetch — both the list and the calendar render this.
   const {
-    items, loading, error, calendarWarning,
+    items, loading, error,
     cycleStatus, addItem, updateItem, deleteItem, refresh,
   } = useItems();
-
-  const readCalendarAccounts = () =>
-    invoke<CalendarAccount[]>("calendar_accounts")
-      .then(setCalendarAccounts)
-      .catch(() => setCalendarAccounts([]));
 
   useEffect(() => {
     invoke<Config | null>("get_config")
@@ -52,8 +43,6 @@ export default function App() {
         setView(config ? "main" : "setup");
       })
       .catch(() => setView("setup"));
-
-    readCalendarAccounts();
 
     const win = getCurrentWindow();
 
@@ -86,9 +75,7 @@ export default function App() {
     });
   };
 
-  // Re-read config on save so the calendar appears without a restart.
   const closeSettings = () => {
-    readCalendarAccounts();
     invoke<Config | null>("get_config")
       .then((config) => {
         setCurrentConfig(config);
@@ -100,9 +87,6 @@ export default function App() {
 
   // Settings previews appearance live, so cancelling has to put it back.
   const cancelSettings = () => {
-    // The calendar tab saves as you go, so its state can have changed even
-    // when the rest of the form is being discarded.
-    readCalendarAccounts();
     applyAppearance(appearanceOf(currentConfig));
     setView("main");
   };
@@ -130,9 +114,9 @@ export default function App() {
         <Setup
           onComplete={closeSettings}
           onCancel={cancelSettings}
-          onCalendarChanged={refresh}
           initialApiKey={currentConfig?.notion_api_key ?? ""}
-          initialDatabaseId={currentConfig?.database_id ?? ""}
+          initialEnabledDataSources={currentConfig?.enabled_data_sources ?? []}
+          initialSchemaOverrides={currentConfig?.schema_overrides ?? {}}
           initialTone={currentConfig?.completion_tone ?? "bell"}
           initialPosition={currentConfig?.startup_position ?? ""}
           initialGlobalShortcut={currentConfig?.global_shortcut ?? "CmdOrControl+Shift+T"}
@@ -149,8 +133,6 @@ export default function App() {
           items={items}
           loading={loading}
           error={error}
-          calendarWarning={calendarWarning}
-          calendarAccounts={calendarAccounts}
           onCycle={cycleStatus}
           onAdd={addItem}
           onUpdate={updateItem}
@@ -170,8 +152,6 @@ export default function App() {
         items={items}
         loading={loading}
         error={error}
-        calendarWarning={calendarWarning}
-        calendarAccounts={calendarAccounts}
         onCycle={cycleStatus}
         onAdd={addItem}
         onUpdate={updateItem}

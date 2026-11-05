@@ -30,7 +30,8 @@ const day = (offset: number, time?: string): string => {
 
 let config: Config = {
   notion_api_key: "secret_demo",
-  database_id: "demo-database",
+  enabled_data_sources: [],
+  schema_overrides: {},
   completion_tone: "bell",
   startup_position: "",
   global_shortcut: "CmdOrControl+Shift+T",
@@ -51,10 +52,7 @@ const item = (id: string, name: string, fields: Partial<Item> = {}): Item => ({
   end: null,
   deadline: null,
   description: null,
-  source: "notion",
-  calendar_id: null,
-  account_id: null,
-  url: null,
+  data_source_id: "demo-data-source",
   created_time: null,
   last_edited_time: null,
   ...fields,
@@ -97,70 +95,7 @@ let items: Item[] = [
     status: "Done", deadline: day(-1),
     created_time: ago(120), last_edited_time: ago(3),
   }),
-
-  // Rows that came from linked Notion Calendar accounts rather than the
-  // database — two accounts, to exercise the multi-account picker.
-  item("g:acct-work:primary:c1", "supervisor 1:1", {
-    source: "google", calendar_id: "primary", account_id: "acct-work",
-    url: "https://calendar.google.com/event?eid=demo1",
-    start: day(0, "14:00"), end: day(0, "14:30"),
-  }),
-  item("g:acct-work:primary:c2", "MRI scan slot", {
-    source: "google", calendar_id: "primary", account_id: "acct-work",
-    url: "https://calendar.google.com/event?eid=demo2",
-    start: day(1, "11:00"), end: day(1, "13:00"),
-    description: "bring the participant consent forms",
-  }),
-  item("g:acct-work:primary:c3", "journal club", {
-    source: "google", calendar_id: "primary", account_id: "acct-work",
-    url: "https://calendar.google.com/event?eid=demo3",
-    start: day(2, "16:00"), end: day(2, "17:00"),
-  }),
-  item("g:acct-personal:primary:c4", "dentist", {
-    source: "google", calendar_id: "primary", account_id: "acct-personal",
-    url: "https://calendar.google.com/event?eid=demo4",
-    start: day(3, "09:30"), end: day(3, "10:15"),
-  }),
 ];
-
-/** The demo runs with two calendar accounts linked, so the merged list —
- *  and the multi-account settings and picker — are what you see. */
-let accounts = [
-  {
-    id: "acct-work",
-    client_id: "demo.apps.googleusercontent.com",
-    has_client_secret: true,
-    account: "demo.work@ualberta.ca",
-    calendars: [{ id: "primary", name: "School" }],
-    default: true,
-  },
-  {
-    id: "acct-personal",
-    client_id: "demo.apps.googleusercontent.com",
-    has_client_secret: true,
-    account: "demo.personal@gmail.com",
-    calendars: [{ id: "primary", name: "Personal" }],
-    default: false,
-  },
-];
-
-interface DemoCalendar {
-  id: string;
-  name: string;
-  primary: boolean;
-  writable: boolean;
-}
-
-const demoCalendarsByAccount: Record<string, DemoCalendar[]> = {
-  "acct-work": [
-    { id: "primary", name: "School", primary: true, writable: true },
-    { id: "lab@group.calendar.google.com", name: "lab bookings", primary: false, writable: true },
-    { id: "dept@group.calendar.google.com", name: "department seminars", primary: false, writable: false },
-  ],
-  "acct-personal": [
-    { id: "primary", name: "Personal", primary: true, writable: true },
-  ],
-};
 
 interface DemoNote {
   filename: string;
@@ -198,15 +133,73 @@ function uniqueNoteFilename(name: string): string {
 
 type Args = Record<string, any>;
 
+/** Two demo databases, so the settings picker/override UI has something
+ *  real to show — one fully matched, one missing most roles. */
+const demoDataSources = [
+  {
+    data_source_id: "ds-demo1",
+    database_title: "Todoish",
+    properties: [
+      { name: "Name", kind: "title" },
+      { name: "Status", kind: "status" },
+      { name: "Date", kind: "date" },
+      { name: "Deadline", kind: "date" },
+      { name: "Description", kind: "rich_text" },
+      { name: "Priority", kind: "select" },
+    ],
+    auto: { status: "Status", time: "Date", deadline: "Deadline", description: "Description" },
+    statusOptions: ["Not started", "In progress", "Done"],
+  },
+  {
+    data_source_id: "ds-demo2",
+    database_title: "Reading list",
+    properties: [
+      { name: "Name", kind: "title" },
+      { name: "Status", kind: "status" },
+      { name: "Author", kind: "rich_text" },
+    ],
+    auto: { status: "Status", time: null, deadline: null, description: null },
+    statusOptions: ["To read", "Reading", "Finished"],
+  },
+];
+
 const handlers: Record<string, (args: Args) => unknown> = {
   get_config: () => config,
+  describe_schemas: (args) => {
+    const overrides = args.schemaOverrides ?? {};
+    return demoDataSources.map((db) => {
+      const over = overrides[db.data_source_id] ?? {};
+      const effective = {
+        status: over.status ?? db.auto.status,
+        time: over.time ?? db.auto.time,
+        deadline: over.deadline ?? db.auto.deadline,
+        description: over.description ?? db.auto.description,
+      };
+      const missing = (["status", "time", "deadline", "description"] as const).filter(
+        (role) => !effective[role]
+      );
+      return {
+        data_source_id: db.data_source_id,
+        database_title: db.database_title,
+        title: "Name",
+        status: effective.status,
+        status_options: effective.status ? db.statusOptions : [],
+        time: effective.time,
+        deadline: effective.deadline,
+        description: effective.description,
+        missing,
+        properties: db.properties,
+      };
+    });
+  },
   // Kept in memory so settings round-trip in the browser — saving and
   // reopening settings shows what you chose, as it would in the app.
   save_config_cmd: (args) => {
     config = {
       ...config,
       notion_api_key: args.apiKey ?? config.notion_api_key,
-      database_id: args.databaseId ?? config.database_id,
+      enabled_data_sources: args.enabledDataSources ?? config.enabled_data_sources,
+      schema_overrides: args.schemaOverrides ?? config.schema_overrides,
       completion_tone: args.completionTone ?? config.completion_tone,
       startup_position: args.startupPosition ?? config.startup_position,
       global_shortcut: args.globalShortcut ?? config.global_shortcut,
@@ -217,7 +210,7 @@ const handlers: Record<string, (args: Args) => unknown> = {
     return null;
   },
 
-  trigger_sync: () => ({ items, warning: null }),
+  trigger_sync: () => items,
   get_items: () => items,
 
   cycle_status: ({ itemId }) => {
@@ -229,20 +222,11 @@ const handlers: Record<string, (args: Args) => unknown> = {
     return found.status;
   },
   create_item: (args) => {
-    const toCalendar = args.source === "google";
-    const accountId = args.accountId ?? accounts[0]?.id ?? "acct-work";
-    const calendarId = args.calendarId ?? "primary";
-    const id = toCalendar
-      ? `g:${accountId}:${calendarId}:c${Date.now()}`
-      : `i${Date.now()}`;
-    const created = item(id, args.name, {
+    const created = item(`i${Date.now()}`, args.name, {
       start: args.start ?? null,
       end: args.end ?? null,
       deadline: args.deadline ?? null,
       description: args.description ?? null,
-      source: toCalendar ? "google" : "notion",
-      calendar_id: toCalendar ? calendarId : null,
-      account_id: toCalendar ? accountId : null,
       created_time: new Date().toISOString(),
     });
     items = [created, ...items];
@@ -261,42 +245,6 @@ const handlers: Record<string, (args: Args) => unknown> = {
 
   open_in_notion: () => null,
 
-  calendar_accounts: () => accounts,
-  list_calendars: ({ accountId }) => demoCalendarsByAccount[accountId] ?? [],
-  connect_calendar: ({ clientId }) => {
-    const id = `acct-demo${Date.now()}`;
-    accounts = [
-      ...accounts,
-      {
-        id,
-        client_id: clientId,
-        has_client_secret: true,
-        account: `demo${accounts.length + 1}@example.com`,
-        calendars: [],
-        default: accounts.length === 0,
-      },
-    ];
-    demoCalendarsByAccount[id] = [
-      { id: "primary", name: `demo${accounts.length}@example.com`, primary: true, writable: true },
-    ];
-    return accounts;
-  },
-  disconnect_calendar: ({ accountId }) => {
-    const wasDefault = accounts.find((a) => a.id === accountId)?.default ?? false;
-    accounts = accounts.filter((a) => a.id !== accountId);
-    if (wasDefault && accounts[0]) accounts[0].default = true;
-    delete demoCalendarsByAccount[accountId];
-    items = items.filter((i) => i.account_id !== accountId);
-    return null;
-  },
-  set_default_calendar_account: ({ accountId }) => {
-    accounts = accounts.map((a) => ({ ...a, default: a.id === accountId }));
-    return null;
-  },
-  save_calendar_selection: ({ accountId, calendars }) => {
-    accounts = accounts.map((a) => (a.id === accountId ? { ...a, calendars } : a));
-    return null;
-  },
   get_autostart: () => false,
   set_autostart: () => null,
   quit_app: () => null,

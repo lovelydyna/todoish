@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { CalendarAccount, Item } from "../types";
+import { Item } from "../types";
 import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
@@ -21,9 +21,6 @@ interface CalendarProps {
   items: Item[];
   loading: boolean;
   error: string | null;
-  /** A calendar sync that failed while the tasks loaded fine. */
-  calendarWarning: string | null;
-  calendarAccounts: CalendarAccount[];
   onCycle: (itemId: string) => void;
   onAdd: (fields: ItemFields) => Promise<void>;
   onUpdate: (itemId: string, fields: ItemFields) => Promise<void>;
@@ -35,7 +32,7 @@ interface CalendarProps {
 }
 
 export function Calendar({
-  items, loading, error, calendarWarning, calendarAccounts,
+  items, loading, error,
   onCycle, onAdd, onUpdate, onDelete, onRefresh,
   onExit, onSettings, onNotes,
 }: CalendarProps) {
@@ -163,7 +160,7 @@ export function Calendar({
         setExpandedId((id) => (id === selected.id ? null : selected.id));
       }
       else if (key === bindings["add"]) { e.preventDefault(); setAdding(true); }
-      else if (key === bindings["edit"] && selected) setEditing(selected);
+      else if (key === bindings["edit"] && selected) { e.preventDefault(); setEditing(selected); }
       else if (key === bindings["delete"] && selected) setConfirmDelete(selected);
       else if (key === bindings["refresh"]) onRefresh();
       else if (key === bindings["settings"]) onSettings();
@@ -186,7 +183,6 @@ export function Calendar({
     expandedId,
     onSelect,
     onCycle: (i: Item) => onCycle(i.id),
-    calendarAccounts,
   };
 
   const empty = flat.length === 0;
@@ -219,7 +215,6 @@ export function Calendar({
       </div>
 
       {error && <div className="error-banner">{error}</div>}
-      {calendarWarning && <div className="calendar-warning">{calendarWarning}</div>}
 
       {showMonth ? (
         <MonthGrid
@@ -297,10 +292,6 @@ export function Calendar({
         <div className="overlay" onClick={() => { setAdding(false); setEditing(null); }}>
           <ItemEdit
             item={editing ?? undefined}
-            calendarAccounts={calendarAccounts}
-            /* Something added from the calendar is, by default, a calendar
-               event — that is what this view is for. */
-            preferCalendar
             onSubmit={handleSubmit}
             onClose={() => { setAdding(false); setEditing(null); }}
           />

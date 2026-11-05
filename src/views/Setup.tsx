@@ -5,10 +5,9 @@ import { playComplete } from "../lib/sounds";
 import { WindowControls } from "../components/WindowControls";
 import { KeybindingsEditor } from "../components/KeybindingsEditor";
 import { useKeybindings } from "../hooks/useKeybindings";
-import { CalendarSettings } from "../components/CalendarSettings";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { FieldLabel } from "../components/InfoTip";
-import { Item } from "../types";
+import { Item, SchemaOverride } from "../types";
 import {
   Appearance,
   THEMES,
@@ -22,11 +21,11 @@ import {
 interface SetupProps {
   onComplete: () => void;
   onCancel?: () => void;
-  /** Called after the calendar link changes, so the item list stops showing
-   *  stale rows until the next 60s sync tick. */
-  onCalendarChanged?: () => void;
   initialApiKey?: string;
-  initialDatabaseId?: string;
+  /** Which discovered Notion data sources feed task/calendar. Empty = every
+   *  shared database. */
+  initialEnabledDataSources?: string[];
+  initialSchemaOverrides?: Record<string, SchemaOverride>;
   initialTone?: string;
   initialPosition?: string;
   initialGlobalShortcut?: string;
@@ -36,31 +35,6 @@ interface SetupProps {
   /** For the history tab, which lives in settings rather than as its own view. */
   items?: Item[];
   historyLoading?: boolean;
-}
-
-/** Eye toggle for the database id field. */
-function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      className="field-reveal"
-      onClick={onToggle}
-      title={shown ? "hide" : "show"}
-    >
-      {shown ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-          <line x1="1" y1="1" x2="23" y2="23"/>
-        </svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-      )}
-    </button>
-  );
 }
 
 const TONES = ["bell", "chime", "click", "none"] as const;
@@ -73,8 +47,17 @@ const POSITIONS = [
   { value: "center", label: "center" },
 ] as const;
 
-/** Mirrors notion::SchemaReport — which property the app matched to each role. */
+/** Mirrors notion::PropertySummary. */
+interface PropertySummary {
+  name: string;
+  kind: string;
+}
+
+/** Mirrors notion::SchemaReport — which property the app matched to each role,
+ *  for one database shared with the integration. */
 interface SchemaReport {
+  data_source_id: string;
+  database_title: string;
   title: string;
   status: string | null;
   /** The option written for each stage: [todo, in progress, done]. */
@@ -83,7 +66,18 @@ interface SchemaReport {
   deadline: string | null;
   description: string | null;
   missing: string[];
+  properties: PropertySummary[];
 }
+
+/** Which property kinds a role's dropdown should offer. A plain `select`
+ *  works for status too — that's the pre-Notion-status-type convention the
+ *  backend already falls back to when it auto-detects. */
+const ROLE_KINDS: Record<"status" | "time" | "deadline" | "description", string[]> = {
+  status: ["status", "select"],
+  time: ["date"],
+  deadline: ["date"],
+  description: ["rich_text"],
+};
 
 export type SettingsTab =
   | "calendar"
@@ -102,9 +96,9 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
 export function Setup({
   onComplete,
   onCancel,
-  onCalendarChanged,
   initialApiKey = "",
-  initialDatabaseId = "",
+  initialEnabledDataSources = [],
+  initialSchemaOverrides = {},
   initialTone = "bell",
   initialPosition = "",
   initialGlobalShortcut = "CmdOrControl+Shift+T",
@@ -115,13 +109,13 @@ export function Setup({
 }: SetupProps) {
   const { bindings } = useKeybindings();
   const [apiKey, setApiKey] = useState(initialApiKey);
-  const [databaseId, setDatabaseId] = useState(initialDatabaseId);
-  const [showDbId, setShowDbId] = useState(false);
   const [tone, setTone] = useState(initialTone);
   const [position, setPosition] = useState(initialPosition);
   const [globalShortcut, setGlobalShortcut] = useState(initialGlobalShortcut);
-  const [schemaReport, setSchemaReport] = useState<SchemaReport | null>(null);
+  const [schemaReports, setSchemaReports] = useState<SchemaReport[] | null>(null);
   const [checking, setChecking] = useState(false);
+  const [enabledDataSources, setEnabledDataSources] = useState<string[]>(initialEnabledDataSources);
+  const [schemaOverrides, setSchemaOverrides] = useState<Record<string, SchemaOverride>>(initialSchemaOverrides);
   const [autostart, setAutostart] = useState(false);
   const [appearance, setAppearance] = useState(() => normalizeAppearance(initialAppearance));
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -161,7 +155,8 @@ export function Setup({
     try {
       await invoke("save_config_cmd", {
         apiKey: apiKey.trim(),
-        databaseId: databaseId.trim(),
+        enabledDataSources,
+        schemaOverrides,
         completionTone: tone,
         startupPosition: position,
         globalShortcut: globalShortcut.trim(),
@@ -181,17 +176,19 @@ export function Setup({
     }
   };
 
-  /** Asks Notion which property fills each role, so a rename is visible here
+  /** Asks Notion which databases are shared with the integration and which
+   *  property fills each role in each one — no id to paste, just the
+   *  connection token; a rename or a newly-shared database shows up here
    *  rather than surfacing later as a write failure. */
-  const checkSchema = async () => {
+  const checkConnection = async () => {
     setChecking(true);
     setError(null);
-    setSchemaReport(null);
+    setSchemaReports(null);
     try {
-      setSchemaReport(
-        await invoke<SchemaReport>("describe_schema", {
+      setSchemaReports(
+        await invoke<SchemaReport[]>("describe_schemas", {
           apiKey: apiKey.trim(),
-          databaseId: databaseId.trim(),
+          schemaOverrides,
         })
       );
     } catch (e) {
@@ -199,6 +196,25 @@ export function Setup({
     } finally {
       setChecking(false);
     }
+  };
+
+  /** Empty selection means "every shared database" — the first time a
+   *  database is unchecked, that has to seed the list with everything else
+   *  that's currently showing, or unchecking one would silently drop every
+   *  other database too. */
+  const toggleDataSource = (id: string, allIds: string[]) => {
+    setEnabledDataSources((prev) => {
+      const active = prev.length === 0 ? allIds : prev;
+      const next = active.includes(id) ? active.filter((x) => x !== id) : [...active, id];
+      return next.length === allIds.length ? [] : next;
+    });
+  };
+
+  const setOverride = (dataSourceId: string, role: keyof SchemaOverride, value: string) => {
+    setSchemaOverrides((prev) => ({
+      ...prev,
+      [dataSourceId]: { ...prev[dataSourceId], [role]: value || null },
+    }));
   };
 
   const toggleAutostart = async () => {
@@ -256,7 +272,7 @@ export function Setup({
         {showTab("calendar") && (
           <>
             <div className="field">
-              <FieldLabel info="Notion developer portal → your connection → configuration → internal connection token. Not the personal access token — that one is user-scoped.">
+              <FieldLabel info="Notion developer portal → your connection → configuration → internal connection token. Not the personal access token — that one is user-scoped. No database id needed: todoish reads every database you've shared with this integration (··· → Connections, in Notion), and you can share more than one.">
                 connection token
               </FieldLabel>
               <input
@@ -270,74 +286,94 @@ export function Setup({
               />
             </div>
 
-            <div className="field">
-              <FieldLabel info="The id from your database url, or ··· → manage data sources → copy data source id. Either works — todoish resolves one to the other.">
-                notion database
-              </FieldLabel>
-              <div className="field-input-row">
-                <input
-                  className="field-input field-input--flex"
-                  type={showDbId ? "text" : "password"}
-                  value={databaseId}
-                  onChange={(e) => setDatabaseId(e.target.value)}
-                  placeholder="32-char hex id from your notion database url"
-                  required
-                />
-                <RevealButton shown={showDbId} onToggle={() => setShowDbId((v) => !v)} />
-              </div>
-            </div>
-
             <div className="schema-bar">
               <button
                 type="button"
                 className="schema-check-btn"
-                onClick={checkSchema}
-                disabled={checking || !apiKey.trim() || !databaseId.trim()}
+                onClick={checkConnection}
+                disabled={checking || !apiKey.trim()}
               >
                 {checking ? "checking…" : "check"}
               </button>
-              {schemaReport && (
+              {schemaReports && (
                 <span className="schema-summary">
-                  {schemaReport.missing.length === 0
-                    ? "all properties matched"
-                    : `${schemaReport.missing.length} missing`}
+                  {schemaReports.length === 0
+                    ? "no databases shared"
+                    : `${schemaReports.length} database${schemaReports.length === 1 ? "" : "s"} found`}
                 </span>
               )}
             </div>
 
-            {schemaReport && (
+            {schemaReports?.length === 0 && (
               <div className="schema-list">
-                {([
-                  ["name", schemaReport.title],
-                  ["status", schemaReport.status],
-                  ["date", schemaReport.time],
-                  ["deadline", schemaReport.deadline],
-                  ["description", schemaReport.description],
-                ] as const).map(([role, matched]) => (
-                  <div key={role} className="schema-line">
-                    <span className="schema-role">{role}</span>
-                    <span className={`schema-match${matched ? "" : " schema-match--missing"}`}>
-                      {matched ?? "not found"}
-                    </span>
-                  </div>
-                ))}
-                {schemaReport.status_options.length > 0 && (
-                  <div className="schema-line">
-                    <span className="schema-role">stages</span>
-                    <span className="schema-match">
-                      {schemaReport.status_options.join(" → ")}
-                    </span>
-                  </div>
-                )}
+                <div className="schema-line">
+                  <span className="schema-match schema-match--missing">
+                    Open a database in Notion, click "···" in the top right, choose Connections,
+                    and add your integration — it'll show up here.
+                  </span>
+                </div>
               </div>
             )}
-          </>
-        )}
 
-        {/* Only in settings: first run is about getting Notion working, and
-            the calendar is an addition to a working setup, not part of one. */}
-        {isSettings && showTab("calendar") && (
-          <CalendarSettings onChanged={onCalendarChanged} />
+            {schemaReports?.map((report) => {
+              const allIds = schemaReports.map((r) => r.data_source_id);
+              const enabled = enabledDataSources.length === 0 || enabledDataSources.includes(report.data_source_id);
+              return (
+                <div key={report.data_source_id} className="schema-list">
+                  <div className="schema-line">
+                    <label className="schema-role schema-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() => toggleDataSource(report.data_source_id, allIds)}
+                      />
+                      {" "}{report.database_title}
+                    </label>
+                    <span className="schema-match">
+                      {report.missing.length === 0 ? "all properties matched" : `${report.missing.length} missing`}
+                    </span>
+                  </div>
+                  {enabled && (
+                    <>
+                      <div className="schema-line">
+                        <span className="schema-role">name</span>
+                        <span className="schema-match">{report.title}</span>
+                      </div>
+                      {(["status", "time", "deadline", "description"] as const).map((role) => {
+                        const matched = report[role];
+                        const options = report.properties.filter((p) => ROLE_KINDS[role].includes(p.kind));
+                        return (
+                          <div key={role} className="schema-line">
+                            <span className="schema-role">{role === "time" ? "date" : role}</span>
+                            <select
+                              className="schema-match-select"
+                              value={matched ?? ""}
+                              onChange={(e) => setOverride(report.data_source_id, role, e.target.value)}
+                            >
+                              <option value="">not found</option>
+                              {options.map((p) => (
+                                <option key={p.name} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                      {report.status_options.length > 0 && (
+                        <div className="schema-line">
+                          <span className="schema-role">stages</span>
+                          <span className="schema-match">
+                            {report.status_options.join(" → ")}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </>
         )}
 
         {isSettings && showTab("appearance") && (
@@ -477,10 +513,7 @@ export function Setup({
         {error && <div className="setup-error">{error}</div>}
         {saved && <div className="setup-saved">saved</div>}
 
-        {/* History is a read-only log — nothing on that tab to save. The
-            calendar tab's Google account section persists through its own
-            commands as you go, but the Notion fields alongside it still need
-            the save button. */}
+        {/* History is a read-only log — nothing on that tab to save. */}
         {!(isSettings && tab === "history") && (
           <button className="setup-submit" type="submit" disabled={loading}>
             {loading ? "saving…" : isSettings ? "save" : "connect"}

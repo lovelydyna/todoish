@@ -1,4 +1,4 @@
-import { CalendarAccount, Item } from "../types";
+import { Item } from "../types";
 import { EventRow } from "./EventRow";
 
 interface EventGroupProps {
@@ -7,7 +7,6 @@ interface EventGroupProps {
   /** Drives the heading colour; omit for the neutral date-section look. */
   variant?: "today" | "tomorrow" | "upcoming";
   events: Item[];
-  calendarAccounts: CalendarAccount[];
   selectedId: string | null;
   expandedId: string | null;
   onSelect: (event: Item) => void;
@@ -18,7 +17,6 @@ export function EventGroup({
   label,
   variant,
   events,
-  calendarAccounts,
   selectedId,
   expandedId,
   onSelect,
@@ -35,7 +33,6 @@ export function EventGroup({
         <EventRow
           key={event.id}
           event={event}
-          calendarAccounts={calendarAccounts}
           selected={event.id === selectedId}
           expanded={event.id === expandedId}
           onClick={() => onSelect(event)}

@@ -1,4 +1,4 @@
-import { CalendarAccount, Item, TaskGroup as TG } from "../types";
+import { Item, TaskGroup as TG } from "../types";
 import { groupSlug } from "../lib/groupTasks";
 import { TaskRow } from "./TaskRow";
 
@@ -7,7 +7,6 @@ interface TaskGroupProps {
   /** Overrides the heading text; the colour still follows `group`. */
   label?: string;
   items: Item[];
-  calendarAccounts: CalendarAccount[];
   selectedId: string | null;
   expandedId: string | null;
   onSelect: (item: Item) => void;
@@ -27,7 +26,6 @@ export function TaskGroup({
   group,
   label,
   items,
-  calendarAccounts,
   selectedId,
   expandedId,
   onSelect,
@@ -75,7 +73,6 @@ export function TaskGroup({
           key={item.id}
           item={item}
           group={group}
-          calendarAccounts={calendarAccounts}
           selected={item.id === selectedId}
           expanded={item.id === expandedId}
           onClick={() => onSelect(item)}

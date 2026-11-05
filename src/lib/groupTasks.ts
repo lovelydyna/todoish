@@ -16,7 +16,7 @@ export function actionDate(item: Item): string | null {
   return item.deadline ?? item.start;
 }
 
-function startOfDay(d: Date): Date {
+export function startOfDay(d: Date): Date {
   const copy = new Date(d);
   copy.setHours(0, 0, 0, 0);
   return copy;
@@ -60,13 +60,10 @@ export function groupTasks(
   const startOfToday = startOfDay(now);
 
   for (const item of items) {
-    // A Notion task whose deadline has already passed drops off the list
-    // entirely rather than sitting in NOW as overdue — it's still in Notion,
-    // todoish just stops carrying it once its own day is gone. Google
-    // Calendar events keep the old overdue-stays-visible behavior: a missed
-    // meeting isn't something you "still owe" the way a deadline is.
+    // A task whose deadline has already passed drops off the list entirely
+    // rather than sitting in NOW as overdue — it's still in Notion, todoish
+    // just stops carrying it once its own day is gone.
     if (
-      item.source === "notion" &&
       item.status !== "Done" &&
       item.deadline &&
       parseDueDate(item.deadline) < startOfToday
