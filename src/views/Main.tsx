@@ -9,6 +9,9 @@ import { ItemEdit } from "../components/ItemEdit";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
 import { IconTag } from "../components/IconTag";
+import { ConfirmDelete } from "../components/ConfirmDelete";
+import { GearIcon, NoteIcon, PlusIcon } from "../components/Icons";
+import { keyLabel } from "../lib/keybindings";
 import { SettingsTab } from "./Setup";
 
 interface MainProps {
@@ -164,63 +167,73 @@ export function Main({
           />
         </div>
         <div className="topbar-right">
-          {loading && <span className="syncing topbar-icon">⟳</span>}
-          <IconTag label="new item" keyHint={bindings["add"]}>
-            <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
-          </IconTag>
+          {loading && <span className="syncing" aria-label="syncing" />}
           <IconTag label="notes" keyHint={bindings["notes-view"]}>
-            <button className="topbar-icon-btn" onClick={() => onNotes()}>✎</button>
+            <button className="topbar-icon-btn" aria-label="notes" onClick={() => onNotes()}><NoteIcon /></button>
           </IconTag>
           <IconTag label="settings" keyHint={bindings["settings"]}>
-            <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
+            <button className="topbar-icon-btn" aria-label="settings" onClick={() => onSettings()}><GearIcon /></button>
           </IconTag>
         </div>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
 
-      {!loading && activeItems === 0 && groups.DONE.length === 0 && !error && (
-        <div className="empty">
-          <div className="empty-icon">✓</div>
-          <div>all clear</div>
-          <div className="empty-hint">[{bindings["add"]}] new · [{bindings["refresh"]}] refresh</div>
-        </div>
-      )}
-
       <div className="task-list">
+        {!loading && activeItems === 0 && groups.DONE.length === 0 && !error && (
+          <div className="empty">
+            <div className="empty-mark" aria-hidden="true">✓</div>
+            <div className="empty-title">All clear</div>
+            <div className="empty-hint">Nothing is due. Add a task below.</div>
+          </div>
+        )}
+
         {TASK_GROUP_ORDER.map((group) => (
           <TaskGroup
             key={group}
             group={group}
-            label={group === "DONE" && showAllDone ? "DONE · all" : group}
             items={groups[group]}
             selectedId={selected?.id ?? null}
             expandedId={expandedId}
             onSelect={selectRow}
             onCycle={(t) => onCycle(t.id)}
+            aside={
+              group === "NOW" ? (
+                new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
+              ) : group === "DONE" ? (
+                <button type="button" className="group-action" title={`[${keyLabel(bindings["toggle-done"])}]`}
+                  onClick={() => setShowAllDone((v) => !v)}>
+                  {showAllDone ? "Show recent" : "Show all"}
+                </button>
+              ) : undefined
+            }
             collapsed={group === "LATER" ? hideLater : undefined}
             onToggleCollapsed={group === "LATER" ? () => setHideLater((v) => !v) : undefined}
-            onLabelClick={group === "DONE" ? () => setShowAllDone((v) => !v) : undefined}
-            labelTitle={group === "DONE" ? `${showAllDone ? "recent only" : "show all"} [${bindings["toggle-done"]}]` : undefined}
           />
         ))}
       </div>
 
+      <div className="bottombar">
+        <button type="button" className="addbar" title={`[${keyLabel(bindings["add"])}]`}
+          onClick={() => setAdding(true)}>
+          <span className="addbar-plus"><PlusIcon /></span>
+          New task
+        </button>
+        {pendingDelete && (
+          <button type="button" className="undo-chip" title={`[${keyLabel(bindings["undo"])}]`} onClick={undoDelete}>
+            Undo delete
+          </button>
+        )}
+      </div>
+
       {confirmDelete && (
-        <div className="overlay" onClick={() => setConfirmDelete(null)}>
-          <div className="confirm-delete" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-title">delete?</div>
-            <div className="confirm-task">"{confirmDelete.name}"</div>
-            <div className="confirm-actions">
-              <button className="confirm-yes" onClick={() => { startPendingDelete(confirmDelete); setConfirmDelete(null); }}>
-                [enter] delete
-              </button>
-              <button className="confirm-no" onClick={() => setConfirmDelete(null)}>
-                [esc] cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDelete
+          noun="task"
+          name={confirmDelete.name}
+          note={`You can undo with ${keyLabel(bindings["undo"])} for 5 minutes.`}
+          onConfirm={() => { startPendingDelete(confirmDelete); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
 
       {editorOpen && (

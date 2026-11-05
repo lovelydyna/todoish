@@ -52,10 +52,12 @@ export function FieldLabel({
   value?: React.ReactNode;
 }) {
   return (
-    <label className="field-label">
+    // A div, not a <label>: a label would forward clicks on its text to the
+    // info button inside it and pop the tip open.
+    <div className="field-label">
       <span className="field-label-text">{children}</span>
       {info && <InfoTip>{info}</InfoTip>}
       {value !== undefined && <span className="field-value">{value}</span>}
-    </label>
+    </div>
   );
 }

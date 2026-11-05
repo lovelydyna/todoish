@@ -4,7 +4,7 @@ import { ItemFields } from "../hooks/useItems";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useKeybindings } from "../hooks/useKeybindings";
 import { groupEvents, upcomingByDay, daySections } from "../lib/groupEvents";
-import { addMonths, addWeeks, dayHeading } from "../lib/calendarGrid";
+import { addDays, addMonths, addWeeks, dayHeading } from "../lib/calendarGrid";
 import { EventGroup } from "../components/EventGroup";
 import { ItemEdit } from "../components/ItemEdit";
 import { WeekStrip } from "../components/WeekStrip";
@@ -12,7 +12,13 @@ import { MonthGrid } from "../components/MonthGrid";
 import { WindowControls } from "../components/WindowControls";
 import { ViewSwitch } from "../components/ViewSwitch";
 import { IconTag } from "../components/IconTag";
+import { ConfirmDelete } from "../components/ConfirmDelete";
+import { CloseIcon, GearIcon, NoteIcon, PlusIcon } from "../components/Icons";
+import { keyLabel } from "../lib/keybindings";
 import { SettingsTab } from "./Setup";
+
+const shortDate = (d: Date) =>
+  d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
 /** How far forward the list runs once you pick a day on a grid. */
 const DAYS_FROM_SELECTED = 14;
@@ -201,15 +207,12 @@ export function Calendar({
           />
         </div>
         <div className="topbar-right">
-          {loading && <span className="syncing topbar-icon">⟳</span>}
-          <IconTag label="new event" keyHint={bindings["add"]}>
-            <button className="topbar-icon-btn" onClick={() => setAdding(true)}>+</button>
-          </IconTag>
+          {loading && <span className="syncing" aria-label="syncing" />}
           <IconTag label="notes" keyHint={bindings["notes-view"]}>
-            <button className="topbar-icon-btn" onClick={() => onNotes()}>✎</button>
+            <button className="topbar-icon-btn" aria-label="notes" onClick={() => onNotes()}><NoteIcon /></button>
           </IconTag>
           <IconTag label="settings" keyHint={bindings["settings"]}>
-            <button className="topbar-icon-btn" onClick={() => onSettings()}>⚙</button>
+            <button className="topbar-icon-btn" aria-label="settings" onClick={() => onSettings()}><GearIcon /></button>
           </IconTag>
         </div>
       </div>
@@ -239,8 +242,10 @@ export function Calendar({
       <div className="task-list">
         {!selectedDay && (
           <>
-            <EventGroup label="TODAY" variant="today" events={groups.TODAY} {...rowProps} />
-            <EventGroup label="TOMORROW" variant="tomorrow" events={groups.TOMORROW} {...rowProps} />
+            <EventGroup label="Today" aside={shortDate(new Date())} variant="today"
+              events={groups.TODAY} {...rowProps} />
+            <EventGroup label="Tomorrow" aside={shortDate(addDays(new Date(), 1))} variant="tomorrow"
+              events={groups.TOMORROW} {...rowProps} />
           </>
         )}
         {sections.map(({ date, items: dayEvents }) => (
@@ -254,38 +259,35 @@ export function Calendar({
 
         {!loading && empty && !error && (
           <div className="empty">
-            <div className="empty-icon">◷</div>
-            <div>{selectedDay ? "nothing from this day on" : "nothing scheduled"}</div>
-            <div className="empty-hint">
-              [{bindings["add"]}] new · [{bindings["month"]}] month · [esc]{" "}
-              {selectedDay || showMonth ? "back" : "tasks"}
-            </div>
+            <div className="empty-mark" aria-hidden="true">◷</div>
+            <div className="empty-title">{selectedDay ? "Nothing from this day on" : "Nothing scheduled"}</div>
+            <div className="empty-hint">Add an event below.</div>
           </div>
         )}
       </div>
 
-      {selectedDay && (
-        <div className="day-filter-bar">
-          from {dayHeading(selectedDay)} onward · [esc] clear
-        </div>
-      )}
+      <div className="bottombar">
+        <button type="button" className="addbar" title={`[${keyLabel(bindings["add"])}]`}
+          onClick={() => setAdding(true)}>
+          <span className="addbar-plus"><PlusIcon /></span>
+          New event
+        </button>
+        {selectedDay && (
+          <button type="button" className="filter-chip" title="clear [esc]" onClick={() => pickDay(null)}>
+            From {dayHeading(selectedDay)}
+            <CloseIcon />
+          </button>
+        )}
+      </div>
 
       {confirmDelete && (
-        <div className="overlay" onClick={() => setConfirmDelete(null)}>
-          <div className="confirm-delete" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-title">delete?</div>
-            <div className="confirm-task">"{confirmDelete.name}"</div>
-            <div className="confirm-actions">
-              <button className="confirm-yes"
-                onClick={() => { onDelete(confirmDelete.id); setConfirmDelete(null); }}>
-                [enter] delete
-              </button>
-              <button className="confirm-no" onClick={() => setConfirmDelete(null)}>
-                [esc] cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDelete
+          noun="event"
+          name={confirmDelete.name}
+          note="It moves to Notion's trash straight away."
+          onConfirm={() => { onDelete(confirmDelete.id); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
 
       {editingOverlay && (

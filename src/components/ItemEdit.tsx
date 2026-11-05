@@ -10,23 +10,6 @@ interface ItemEditProps {
   onClose: () => void;
 }
 
-type Step = "name" | "time" | "deadline" | "description";
-const STEPS: Step[] = ["name", "time", "deadline", "description"];
-
-const PROMPTS: Record<Step, string> = {
-  name:        "name    ",
-  time:        "time    ",
-  deadline:    "deadline",
-  description: "desc    ",
-};
-
-const HINTS: Record<Step, string> = {
-  name:        "",
-  time:        "clear for none",
-  deadline:    "clear for none",
-  description: "↵ skip",
-};
-
 /** Today's date as an `<input type=date>` value. */
 function todayISODate(): string {
   const d = new Date();
@@ -35,10 +18,10 @@ function todayISODate(): string {
 }
 
 /**
- * Splits the "time" step's stored value — the same "YYYY-MM-DD HH:MM-HH:MM"
- * string `parseEventTime` already accepts — into the three native inputs
- * that edit it. Keeping the stored value in that format means submission
- * still goes through the existing parser unchanged.
+ * Splits the stored "when" value — the same "YYYY-MM-DD HH:MM-HH:MM" string
+ * `parseEventTime` already accepts — into the three native inputs that edit
+ * it. Keeping the stored value in that format means submission still goes
+ * through the existing parser unchanged.
  */
 function splitTimeValue(raw: string): { date: string; start: string; end: string } {
   const [datePart, rangePart] = raw.trim().split(/\s+/);
@@ -54,194 +37,130 @@ function composeTimeValue(date: string, start: string, end: string): string {
   return end ? `${date} ${start}-${end}` : `${date} ${start}`;
 }
 
-function displayValue(step: Step, raw: string): string {
-  if (!raw.trim()) return "—";
-  if (step === "time") {
-    const { start, end } = parseEventTime(raw);
-    return start ? formatEventTime(start, end) : raw;
-  }
-  if (step === "deadline") return parseDeadline(raw) ?? raw;
-  return raw;
-}
-
-function initialValues(item: Item | undefined): Record<Step, string> {
-  // New items' date fields default to today rather than an empty
-  // "yyyy-mm-dd" — the year and month are almost always right already, so
-  // there's normally just a day to adjust; the "clear" button next to each
-  // field empties it back out for something with no real date. Editing an
-  // existing item always shows its actual stored value instead.
-  const time = formatEventTime(item?.start ?? null, item?.end ?? null);
-  const deadline = item?.deadline ?? "";
-  return {
-    name: item?.name ?? "",
-    time: item ? time : time || todayISODate(),
-    deadline: item ? deadline : deadline || todayISODate(),
-    description: item?.description ?? "",
-  };
-}
-
+/**
+ * Quick add / edit, as one card: name first and focused, description under
+ * it, the two dates as a row of fields, and Save at the bottom. Enter from
+ * any field saves, so the fast path is type a name and press Enter.
+ */
 export function ItemEdit({ item, onSubmit, onClose }: ItemEditProps) {
-  const seed = initialValues(item);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [completed, setCompleted] = useState<{ step: Step; raw: string }[]>([]);
-  const [current, setCurrent] = useState(seed[STEPS[0]]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  // New items' date fields default to today: the year and month are almost
+  // always right already, so there's normally just a day to adjust. "Clear"
+  // empties a field for something with no real date. Editing shows the
+  // stored values as they are.
+  const [name, setName] = useState(item?.name ?? "");
+  const [description, setDescription] = useState(item?.description ?? "");
+  const [when, setWhen] = useState(() => {
+    const t = formatEventTime(item?.start ?? null, item?.end ?? null);
+    return item ? t : t || todayISODate();
+  });
+  const [deadline, setDeadline] = useState(() => (item ? item.deadline ?? "" : todayISODate()));
+  const nameRef = useRef<HTMLInputElement>(null);
 
-  const currentStep = STEPS[stepIndex];
-
-  // Focuses the field for a newly-entered step. Keyed on stepIndex alone —
-  // keying this on `current` as well reruns it on every keystroke, which
-  // reselects the whole input and makes each new character overwrite the
-  // last instead of appending.
   useEffect(() => {
-    inputRef.current?.focus();
-    // date/time inputs throw on select() — it only applies to text-like ones.
-    if (inputRef.current?.type === "text") inputRef.current.select();
-  }, [stepIndex]);
+    nameRef.current?.focus();
+    nameRef.current?.select();
+  }, []);
 
-  const handleBack = () => {
-    if (stepIndex === 0) return;
-    const prev = completed[completed.length - 1];
-    setCompleted(completed.slice(0, -1));
-    setCurrent(prev.raw);
-    setStepIndex(stepIndex - 1);
-  };
-
-  const handleEnter = () => {
-    if (currentStep === "name" && !current.trim()) return;
-
-    const newCompleted = [...completed, { step: currentStep, raw: current }];
-
-    if (stepIndex < STEPS.length - 1) {
-      const next = STEPS[stepIndex + 1];
-      setCompleted(newCompleted);
-      setCurrent(seed[next]);
-      setStepIndex(stepIndex + 1);
-      return;
-    }
-
-    const vals = Object.fromEntries(
-      newCompleted.map(({ step, raw }) => [step, raw])
-    ) as Record<Step, string>;
-    const { start, end } = parseEventTime(vals.time ?? "");
-
+  const submit = () => {
+    if (!name.trim()) { nameRef.current?.focus(); return; }
+    const { start, end } = parseEventTime(when);
     onSubmit({
-      name: vals.name.trim(),
+      name: name.trim(),
       start,
       end,
-      deadline: parseDeadline(vals.deadline ?? ""),
-      description: vals.description.trim() || null,
+      deadline: parseDeadline(deadline),
+      description: description.trim() || null,
     });
   };
 
-  /** Enter/Escape for the native date/time inputs — no back-gesture here,
-   *  since ArrowUp/Backspace drive the native picker instead. */
-  const dateTimeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") { e.preventDefault(); handleEnter(); }
-    else if (e.key === "Escape") onClose();
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    // A focused button handles its own Enter (Cancel shouldn't save).
+    else if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      submit();
+    }
   };
 
+  const { date, start, end } = splitTimeValue(when);
+  const day = date || todayISODate();
+
   return (
-    <div className="quickadd" onClick={(e) => e.stopPropagation()}>
-      <div className="quickadd-title">{item ? "edit" : "new"}</div>
+    <form
+      className="quickadd"
+      onClick={(e) => e.stopPropagation()}
+      onSubmit={(e) => { e.preventDefault(); submit(); }}
+      onKeyDown={onKeyDown}
+    >
+      <input
+        ref={nameRef}
+        className="quickadd-name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={item ? "Name" : "What needs doing?"}
+        aria-label="name"
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <input
+        className="quickadd-desc"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Description"
+        aria-label="description"
+        autoComplete="off"
+      />
 
-      {completed.map(({ step, raw }) => (
-        <div key={step} className="quickadd-row quickadd-row--done">
-          <span className="quickadd-key">{PROMPTS[step]}</span>
-          <span className="quickadd-val">{displayValue(step, raw)}</span>
-        </div>
-      ))}
-
-      <div className="quickadd-row quickadd-row--active">
-        <span className="quickadd-key">{PROMPTS[currentStep]}</span>
-        {currentStep === "time" && (() => {
-          const { date, start, end } = splitTimeValue(current);
-          return (
-            <span className="quickadd-datetime">
-              <input
-                ref={inputRef}
-                type="date"
-                className="quickadd-native"
-                value={date}
-                onChange={(e) => setCurrent(composeTimeValue(e.target.value, start, end))}
-                onKeyDown={dateTimeKeyDown}
-              />
-              <input
-                type="time"
-                className="quickadd-native"
-                value={start}
-                onChange={(e) =>
-                  setCurrent(composeTimeValue(date || todayISODate(), e.target.value, end))
-                }
-                onKeyDown={dateTimeKeyDown}
-              />
-              <span className="quickadd-native-sep">–</span>
-              <input
-                type="time"
-                className="quickadd-native"
-                value={end}
-                onChange={(e) =>
-                  setCurrent(composeTimeValue(date || todayISODate(), start, e.target.value))
-                }
-                onKeyDown={dateTimeKeyDown}
-              />
-              {current && (
-                <button type="button" className="quickadd-clear" onClick={() => setCurrent("")}>
-                  clear
-                </button>
-              )}
-            </span>
-          );
-        })()}
-        {currentStep === "deadline" && (
-          <span className="quickadd-datetime">
-            <input
-              ref={inputRef}
-              type="date"
-              className="quickadd-native"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-              onKeyDown={dateTimeKeyDown}
-            />
-            {current && (
-              <button type="button" className="quickadd-clear" onClick={() => setCurrent("")}>
-                clear
-              </button>
-            )}
-          </span>
-        )}
-        {(currentStep === "name" || currentStep === "description") && (
+      <div className="quickadd-fields">
+        <div className="qa-field">
+          <span className="qa-label">When</span>
           <input
-            ref={inputRef}
-            className="quickadd-input"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); handleEnter(); }
-              if (e.key === "Escape") { onClose(); }
-              if (e.key === "ArrowUp" || (e.key === "Backspace" && current === "")) {
-                e.preventDefault();
-                handleBack();
-              }
-            }}
-            spellCheck={false}
-            autoComplete="off"
+            type="date"
+            className="qa-input"
+            aria-label="date"
+            value={date}
+            onChange={(e) => setWhen(composeTimeValue(e.target.value, start, end))}
           />
-        )}
+          <input
+            type="time"
+            className="qa-input"
+            aria-label="start time"
+            value={start}
+            onChange={(e) => setWhen(composeTimeValue(day, e.target.value, end))}
+          />
+          <span className="qa-sep">–</span>
+          <input
+            type="time"
+            className="qa-input"
+            aria-label="end time"
+            value={end}
+            onChange={(e) => setWhen(composeTimeValue(day, start, e.target.value))}
+          />
+          {when && (
+            <button type="button" className="qa-clear" onClick={() => setWhen("")}>Clear</button>
+          )}
+        </div>
+        <div className="qa-field">
+          <span className="qa-label">Deadline</span>
+          <input
+            type="date"
+            className="qa-input"
+            aria-label="deadline"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+          />
+          {deadline && (
+            <button type="button" className="qa-clear" onClick={() => setDeadline("")}>Clear</button>
+          )}
+        </div>
       </div>
 
-      <div className="quickadd-hint">
-        {HINTS[currentStep] && <span>{HINTS[currentStep]}</span>}
-        {/* Arrow/Backspace-to-go-back is only wired on the text steps — on a
-            date/time step those keys drive the native picker instead, so the
-            hint would be lying. A plain click still works everywhere. */}
-        {stepIndex > 0 && (currentStep === "name" || currentStep === "description") && (
-          <span> · ↑/⌫ back</span>
-        )}
-        {stepIndex > 0 && (currentStep === "time" || currentStep === "deadline") && (
-          <span> · <button type="button" className="quickadd-back-link" onClick={handleBack}>back</button></span>
-        )}
+      <div className="dialog-actions">
+        <button type="button" className="btn btn--secondary" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary" disabled={!name.trim()}>
+          {item ? "Save" : "Add"}
+        </button>
       </div>
-    </div>
+    </form>
   );
 }

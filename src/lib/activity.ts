@@ -78,10 +78,10 @@ export function activityByDay(items: Item[]): ActivityDay[] {
   return [...days.values()].sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-/** "TODAY" / "YESTERDAY" / "TUE, AUG 11" for an activity day heading. */
+/** "Today" / "Yesterday" / "Tue, Aug 11" for an activity day heading. */
 export function activityDayHeading(date: Date, now = new Date()): string {
-  if (isSameDay(date, now)) return "TODAY";
-  if (isSameDay(date, addDays(now, -1))) return "YESTERDAY";
+  if (isSameDay(date, now)) return "Today";
+  if (isSameDay(date, addDays(now, -1))) return "Yesterday";
   return dayHeading(date);
 }
 

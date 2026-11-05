@@ -85,8 +85,7 @@ export const WEEKDAY_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
 /** "TUE AUG 11" — the heading for a day section. */
 export function dayHeading(d: Date): string {
   return d
-    .toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
-    .toUpperCase();
+    .toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
 /** "August 2026" — the month view's title. */

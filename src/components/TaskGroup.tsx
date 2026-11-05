@@ -1,84 +1,82 @@
+import { ReactNode } from "react";
 import { Item, TaskGroup as TG } from "../types";
-import { groupSlug } from "../lib/groupTasks";
+import { groupSlug, TASK_GROUP_LABELS } from "../lib/groupTasks";
 import { TaskRow } from "./TaskRow";
+import { ChevronRightIcon } from "./Icons";
 
 interface TaskGroupProps {
   group: TG;
-  /** Overrides the heading text; the colour still follows `group`. */
-  label?: string;
   items: Item[];
   selectedId: string | null;
   expandedId: string | null;
   onSelect: (item: Item) => void;
   onCycle: (item: Item) => void;
+  /** Quiet text at the right of the heading, e.g. today's date beside Now. */
+  aside?: ReactNode;
   /** When set, the heading becomes a click target that hides the rows
-   *  beneath it, showing just the count — used for LATER, which is the one
-   *  group worth tucking away rather than scrolling past. */
+   *  beneath it, leaving just the count — used for Later, the one group
+   *  worth tucking away rather than scrolling past. */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
-  /** A plain clickable label with no caret or count — used for DONE, where
-   *  the click widens what's shown (recent → all) rather than hiding it. */
-  onLabelClick?: () => void;
-  labelTitle?: string;
 }
 
+/**
+ * One section of the task list: a sticky heading with its count, then rows.
+ * The group's slug on the wrapper sets the checkbox ring colour for every
+ * row inside, so urgency reads from the circles without tinting whole rows.
+ */
 export function TaskGroup({
   group,
-  label,
   items,
   selectedId,
   expandedId,
   onSelect,
   onCycle,
+  aside,
   collapsed,
   onToggleCollapsed,
-  onLabelClick,
-  labelTitle,
 }: TaskGroupProps) {
   if (items.length === 0) return null;
 
-  const heading = (
+  const title = (
     <>
-      {label ?? group}
-      {onToggleCollapsed && <span className="group-label-count">{items.length}</span>}
+      {onToggleCollapsed && (
+        <span className={`group-caret${collapsed ? "" : " group-caret--open"}`}>
+          <ChevronRightIcon />
+        </span>
+      )}
+      <span className="group-name">{TASK_GROUP_LABELS[group]}</span>
+      <span className="group-count">{items.length}</span>
     </>
   );
 
   return (
-    <div className="task-group">
-      {onToggleCollapsed ? (
-        <button
-          type="button"
-          className={`group-label group-label--${groupSlug(group)} group-label--collapsible`}
-          onClick={onToggleCollapsed}
-          title={collapsed ? "show later" : "hide later"}
-        >
-          <span className={`group-label-caret${collapsed ? "" : " group-label-caret--open"}`}>›</span>
-          {heading}
-        </button>
-      ) : onLabelClick ? (
-        <button
-          type="button"
-          className={`group-label group-label--${groupSlug(group)} group-label--collapsible`}
-          onClick={onLabelClick}
-          title={labelTitle}
-        >
-          {heading}
-        </button>
-      ) : (
-        <div className={`group-label group-label--${groupSlug(group)}`}>{heading}</div>
-      )}
+    <section className={`task-group task-group--${groupSlug(group)}`}>
+      <div className="group-head">
+        {onToggleCollapsed ? (
+          <button
+            type="button"
+            className="group-title group-title--button"
+            onClick={onToggleCollapsed}
+            aria-expanded={!collapsed}
+          >
+            {title}
+          </button>
+        ) : (
+          <h2 className="group-title">{title}</h2>
+        )}
+        {aside && <span className="group-aside">{aside}</span>}
+      </div>
       {!collapsed && items.map((item) => (
         <TaskRow
           key={item.id}
           item={item}
-          group={group}
           selected={item.id === selectedId}
           expanded={item.id === expandedId}
           onClick={() => onSelect(item)}
           onCycle={() => onCycle(item)}
         />
       ))}
-    </div>
+    </section>
   );
 }

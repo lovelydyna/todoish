@@ -6,7 +6,6 @@ import {
   Action,
   keyLabel,
   actionForKey,
-  DEFAULTS,
 } from "../lib/keybindings";
 import { eventToAccelerator, acceleratorLabel } from "../lib/accelerator";
 
@@ -77,80 +76,83 @@ export function KeybindingsEditor({
 
   return (
     <div className="keybindings">
-      <div className="keybindings-header">
-        <span className="field-label">click a key to rebind</span>
+      <div className="kb-toolbar">
+        <span className="setting-note">
+          {capturing || capturingGlobal ? "Press the new key. Esc cancels." : "Click a shortcut to change it."}
+        </span>
         <button
           type="button"
-          className="help-reset"
-          title="reset all keybindings to defaults"
+          className="btn btn--ghost btn--small"
           onClick={() => { resetBindings(); setCaptureError(null); }}
         >
-          ↺
+          Reset all
         </button>
       </div>
 
-      {captureError && <div className="help-capture-error">{captureError}</div>}
+      {captureError && <div className="callout callout--warn">{captureError}</div>}
 
       {ACTION_SECTIONS.map((section) => (
-        <div key={section.label}>
-          <div className="help-section">{section.label}</div>
+        <div key={section.label} className="kb-section">
+          <h2 className="kb-section-title">{section.label}</h2>
           {section.actions.map((action) => {
             const isCapturing = capturing === action;
-            const isDefault = bindings[action] === DEFAULTS[action];
             return (
-              <div
+              <button
+                type="button"
                 key={action}
-                className={`help-row help-row--bindable${isCapturing ? " help-row--capturing" : ""}`}
+                className={`kb-row${isCapturing ? " kb-row--capturing" : ""}`}
                 onClick={() => {
                   setCapturing(action);
                   setCapturingGlobal(false);
                   setCaptureError(null);
                 }}
-                title="click to rebind"
               >
-                <span className={`help-key${!isDefault ? " help-key--custom" : ""}`}>
+                <span className="kb-label">{ACTION_LABELS[action]}</span>
+                <kbd className={`kbd kbd--lg${isCapturing ? " kbd--capturing" : ""}`}>
                   {isCapturing ? "press a key…" : keyLabel(bindings[action])}
-                </span>
-                {ACTION_LABELS[action]}
-              </div>
+                </kbd>
+              </button>
             );
           })}
         </div>
       ))}
 
-      <div className="help-section">system-wide</div>
-      <div
-        className={`help-row help-row--bindable${capturingGlobal ? " help-row--capturing" : ""}`}
-        onClick={() => {
-          setCapturing(null);
-          setCapturingGlobal(true);
-          setCaptureError(null);
-        }}
-        title="click to rebind — works from any app"
-      >
-        <span className={`help-key${globalShortcut ? " help-key--custom" : ""}`}>
-          {capturingGlobal ? "press a combo…" : acceleratorLabel(globalShortcut)}
-        </span>
-        show / hide todoish
-      </div>
-      {globalShortcut && (
-        <div
-          className="help-row help-row--bindable help-row--clear"
-          onClick={() => { onGlobalShortcutChange(""); setCapturingGlobal(false); }}
-          title="disable the global shortcut"
+      <div className="kb-section">
+        <h2 className="kb-section-title">from any app</h2>
+        <button
+          type="button"
+          className={`kb-row${capturingGlobal ? " kb-row--capturing" : ""}`}
+          onClick={() => {
+            setCapturing(null);
+            setCapturingGlobal(true);
+            setCaptureError(null);
+          }}
         >
-          <span className="help-key">clear</span>
-          turn the global shortcut off
+          <span className="kb-label">show / hide todoish</span>
+          <kbd className={`kbd kbd--lg${capturingGlobal ? " kbd--capturing" : ""}`}>
+            {capturingGlobal ? "press a combo…" : acceleratorLabel(globalShortcut)}
+          </kbd>
+        </button>
+        <div className="kb-note">
+          Needs a modifier like ⌘ or ⌥. Takes effect when you save.
+          {globalShortcut && (
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => { onGlobalShortcutChange(""); setCapturingGlobal(false); }}
+            >
+              Turn off
+            </button>
+          )}
         </div>
-      )}
-      <div className="help-note">needs a modifier · applies after a restart</div>
+      </div>
 
-      <div className="help-section">app (fixed)</div>
-      <div className="help-row"><span className="help-key">⌘W / ⌘H</span> hide</div>
-      <div className="help-row"><span className="help-key">⌘Q</span> quit</div>
-      <div className="help-row"><span className="help-key">⌘R</span> refresh</div>
-
-      <div className="help-dismiss">esc cancels a capture</div>
+      <div className="kb-section">
+        <h2 className="kb-section-title">fixed</h2>
+        <div className="kb-row kb-row--static"><span className="kb-label">hide</span><kbd className="kbd kbd--lg">⌘W / ⌘H</kbd></div>
+        <div className="kb-row kb-row--static"><span className="kb-label">quit</span><kbd className="kbd kbd--lg">⌘Q</kbd></div>
+        <div className="kb-row kb-row--static"><span className="kb-label">refresh</span><kbd className="kbd kbd--lg">⌘R</kbd></div>
+      </div>
     </div>
   );
 }

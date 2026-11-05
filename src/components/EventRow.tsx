@@ -23,22 +23,17 @@ export function EventRow({ event, selected, expanded, onClick, onCycle }: EventR
 
   return (
     <div
-      className={`event-row ${selected ? "event-row--selected" : ""}`}
+      className={`event-row${selected ? " event-row--selected" : ""}`}
+      aria-selected={selected}
       onClick={onClick}
       onContextMenu={handleContextMenu}
     >
       <div className="event-row-main">
-        <span className="task-cursor">{selected ? "▶" : " "}</span>
         <StatusBox status={event.status} onCycle={onCycle} />
-        <span className="event-time">{time || "—"}</span>
+        <span className="event-time">{time}</span>
         <span className="event-name">{event.name}</span>
-        {event.description && !expanded && (
-          <span className="task-has-note" title="has a description">·</span>
-        )}
         {deadline && (
-          <span className={`event-deadline ${overdue ? "event-deadline--passed" : ""}`}>
-            {deadline}
-          </span>
+          <span className={`due${overdue ? " due--overdue" : ""}`}>{deadline}</span>
         )}
       </div>
       {expanded && event.description && (

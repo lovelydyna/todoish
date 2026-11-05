@@ -123,12 +123,12 @@ describe("activityByDay", () => {
 
 describe("activityDayHeading", () => {
   it("names today and yesterday", () => {
-    expect(activityDayHeading(new Date("2026-04-20T00:00:00"))).toBe("TODAY");
-    expect(activityDayHeading(new Date("2026-04-19T00:00:00"))).toBe("YESTERDAY");
+    expect(activityDayHeading(new Date("2026-04-20T00:00:00"))).toBe("Today");
+    expect(activityDayHeading(new Date("2026-04-19T00:00:00"))).toBe("Yesterday");
   });
 
   it("falls back to a dated heading further back", () => {
-    expect(activityDayHeading(new Date("2026-04-17T00:00:00"))).toMatch(/^FRI\b/);
+    expect(activityDayHeading(new Date("2026-04-17T00:00:00"))).toMatch(/^Fri\b/);
   });
 });
 
